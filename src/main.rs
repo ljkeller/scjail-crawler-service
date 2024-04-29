@@ -1,11 +1,19 @@
-use std::collections::HashMap;
-
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let resp = reqwest::get("https://httpbin.org/ip")
-        .await?
-        .json::<HashMap<String, String>>()
-        .await?;
-    println!("{resp:#?}");
-    Ok(())
+async fn main() -> Result<(), reqwest::Error> {
+  let url = if let Some(url) = std::env::args().nth(1) {
+    url
+  } else {
+    println!("No CLI URL provided, using default");
+    "https://hyper.rs".into()
+  };
+
+  eprintln!("Fetching URL: {url:?}...");
+  let res = reqwest::get(url).await?;
+  eprintln!("Response: {:?} {}", res.version(), res.status());
+  eprintln!("Headers: {:#?}", res.headers());
+  let body = res.text().await?;
+
+  println!("Body: {body}");
+
+  Ok(())
 }
