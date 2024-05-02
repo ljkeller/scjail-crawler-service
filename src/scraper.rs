@@ -13,17 +13,12 @@ pub(crate) async fn fetch_inmate_sysids(url: &str) -> Result<Vec<String>, reqwes
     let document = scraper::Html::parse_document(&body);
     for row in document.select(&sys_id_selector) {
         trace!("Row: {:#?}", row.value());
-        let url_sys_id = row.value().attr("href");
-
-        match url_sys_id {
-            Some(url) => {
-                ret_urls.push(url.into());
-                trace!("Pushed URL Sys ID: {:#?}", url);
-            }
-            None => {
-                warn!("No URL Sys ID found in row: {:#?}", row.value());
-                continue;
-            }
+        if let Some(url_sys_id) = row.value().attr("href") {
+            ret_urls.push(url_sys_id.into());
+            trace!("Pushed URL Sys ID: {:#?}", url_sys_id);
+        } else {
+            warn!("No URL Sys ID found in row: {:#?}", row.value());
+            continue;
         }
     }
 
