@@ -18,6 +18,7 @@ async fn main() -> Result<(), reqwest::Error> {
         }
         Err(e) => {
             error!("Error fetching sys IDs: {:#?}", e);
+            return Err(e);
         }
     }
 
