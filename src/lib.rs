@@ -49,9 +49,16 @@ pub mod inmate {
     impl Record {
         // We should probably update this code to return an option type
         // There is so many different ways to fail here, we can write our own error types, or just return an option
-        pub async fn build(client: &reqwest::Client, url: &str) -> Result<Record, reqwest::Error> {
+        pub async fn build(client: &reqwest::Client, url: &str) -> Result<Record, crate::Error> {
             let request_url = format!("https://www.scottcountyiowa.us/sheriff/inmates.php{}", url);
-            let record_body = client.get(&request_url).send().await?.text().await?;
+            let record_body = client
+                .get(&request_url)
+                .send()
+                .await
+                .map_err(|_| crate::Error::NetworkError)?
+                .text()
+                .await
+                .map_err(|_| crate::Error::NetworkError)?;
             let record_body_html = scraper::Html::parse_document(&record_body);
             trace!("Record request body: {:#?}", record_body_html);
 
@@ -70,14 +77,20 @@ use inmate::*;
 async fn fetch_inmate_sysids(
     client: &reqwest::Client,
     url: &str,
-) -> Result<Vec<String>, reqwest::Error> {
+) -> Result<Vec<String>, crate::Error> {
     let sys_id_selector = scraper::Selector::parse(".inmates-table tr td a[href]")
         .expect("Failed to parse inmates-table for sys_id url");
     let mut ret_urls = Vec::new();
 
-    let res = client.get(url).send().await?;
+    let res = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|_| Error::NetworkError)?;
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
     debug!("Response: {:?} {}", res.version(), res.status());
-    let body = res.text().await?;
+    let body = res.text().await.map_err(|_| Error::NetworkError)?;
     let document = scraper::Html::parse_document(&body);
     for row in document.select(&sys_id_selector) {
         trace!("Row: {:#?}", row.value());
@@ -96,12 +109,20 @@ async fn fetch_inmate_sysids(
 pub async fn fetch_records(
     client: &reqwest::Client,
     url: &str,
-) -> Result<Vec<Record>, reqwest::Error> {
+) -> Result<Vec<Record>, crate::Error> {
     info!("Fetching records for URL: {url}...");
     let mut records = Vec::new();
 
-    let sys_ids = fetch_inmate_sysids(client, url).await?;
-    info!("Fetched sys IDs: {:#?}", sys_ids);
+    let sys_ids = match fetch_inmate_sysids(client, url).await {
+        Ok(sys_ids) => {
+            info!("Fetched sys IDs: {:#?} for {url}", sys_ids);
+            sys_ids
+        }
+        Err(e) => {
+            error!("Error fetching sys IDs: {:#?} for {url}", e);
+            return Err(Error::NetworkError);
+        }
+    };
 
     for sys_id in sys_ids.iter() {
         let record = Record::build(client, sys_id).await;
@@ -111,7 +132,7 @@ pub async fn fetch_records(
                 records.push(record);
             }
             Err(e) => {
-                error!("Error building record: {:#?}. Continuing", e);
+                error!("Error building record: {:#?} for {sys_id}. Continuing", e);
             }
         }
         // TODO: use config value to set sleep duration

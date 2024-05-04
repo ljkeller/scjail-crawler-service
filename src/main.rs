@@ -1,9 +1,9 @@
 use log::{error, info};
 
-use scjail_crawler_service::fetch_records;
+use scjail_crawler_service::{fetch_records, Error};
 
 #[tokio::main]
-async fn main() -> Result<(), reqwest::Error> {
+async fn main() -> Result<(), crate::Error> {
     pretty_env_logger::init();
 
     let url = if let Some(url) = std::env::args().nth(1) {
