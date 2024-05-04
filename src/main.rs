@@ -1,5 +1,6 @@
-mod scraper;
 use log::{error, info};
+
+use scjail_crawler_service::fetch_records;
 
 #[tokio::main]
 async fn main() -> Result<(), reqwest::Error> {
@@ -11,7 +12,8 @@ async fn main() -> Result<(), reqwest::Error> {
         "https://www.scottcountyiowa.us/sheriff/inmates.php?comdate=today".into()
     };
 
-    let sys_ids = scraper::fetch_inmate_sysids(&url).await;
+    let client = reqwest::Client::new();
+    let sys_ids = fetch_records(&client, &url).await;
     match sys_ids {
         Ok(sys_ids) => {
             info!("Sys IDs: {:#?}", sys_ids);
