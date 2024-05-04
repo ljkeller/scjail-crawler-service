@@ -23,22 +23,83 @@ impl std::fmt::Display for Error {
 }
 
 pub mod inmate {
-    use log::trace;
+    use log::{error, info, trace, warn};
 
     #[derive(Debug)]
     pub struct InmateProfile {}
 
     impl InmateProfile {
-        pub async fn build(html: &str) -> Result<InmateProfile, crate::Error> {
+        pub fn build(html: &scraper::Html) -> Result<InmateProfile, crate::Error> {
+            trace!("Building InmateProfile from HTML: {:#?}", html);
+
             Ok(InmateProfile {})
         }
     }
 
     #[derive(Debug)]
-    pub struct BondInformation {}
+    pub struct Bond {
+        bond_type: String,
+        bond_amount: u64,
+    }
+
+    #[derive(Debug)]
+    pub struct BondInformation {
+        bonds: Vec<Bond>,
+    }
+
+    impl BondInformation {
+        pub fn build(html: &scraper::Html) -> Result<BondInformation, crate::Error> {
+            let mut bonds = Vec::new();
+            // | Date Set | Type ID	| Bond Amt | Status	| Posted By	| Date Posted |
+            trace!("Building BondInformation from HTML: {:#?}", html.html());
+            let bond_tr_selector = scraper::Selector::parse(".inmates-bond-table tbody tr")
+                .map_err(|_| crate::Error::ParseError)?;
+            let td_selector =
+                scraper::Selector::parse("td").map_err(|_| crate::Error::ParseError)?;
+
+            for row in html.select(&bond_tr_selector) {
+                let mut td = row.select(&td_selector);
+
+                let bond_type = match td.nth(1) {
+                    Some(td) => td.text().collect::<String>(),
+                    None => {
+                        warn!("No bond type found in row: {:#?}. Continuing in hope there is a non-corrupt bond type", row);
+                        continue;
+                    }
+                };
+                let bond_amount = match td.nth(0) {
+                    // TODO! Implement dollars to cents conversion (that drops non-numeric characters)
+                    Some(td) => td.text().collect::<String>().parse::<u64>().unwrap_or(0),
+                    None => {
+                        warn!("No bond amount found in row: {:#?}. Continuing in hope there is a non-corrupt bond amount", row);
+                        continue;
+                    }
+                };
+
+                bonds.push(Bond {
+                    bond_type,
+                    bond_amount,
+                });
+            }
+
+            if bonds.is_empty() {
+                error!("No bonds found in HTML: {:#?}", html.html());
+            }
+
+            Ok(BondInformation { bonds })
+        }
+    }
 
     #[derive(Debug)]
     pub struct ChargeInformation {}
+
+    impl ChargeInformation {
+        pub fn build(html: &scraper::Html) -> Result<ChargeInformation, crate::Error> {
+            trace!("Building ChargeInformation from HTML: {:#?}", html);
+
+            Ok(ChargeInformation {})
+        }
+    }
 
     #[derive(Debug)]
     pub struct Record {
@@ -53,6 +114,7 @@ pub mod inmate {
         // There is so many different ways to fail here, we can write our own error types, or just return an option
         pub async fn build(client: &reqwest::Client, url: &str) -> Result<Record, crate::Error> {
             let request_url = format!("https://www.scottcountyiowa.us/sheriff/inmates.php{}", url);
+            info!("Building record for URL: {:#?}", request_url);
             let record_body = client
                 .get(&request_url)
                 .send()
@@ -66,9 +128,9 @@ pub mod inmate {
 
             Ok(Record {
                 url: request_url,
-                profile: InmateProfile {},
-                bond: BondInformation {},
-                charges: ChargeInformation {},
+                profile: InmateProfile::build(&record_body_html)?,
+                bond: BondInformation::build(&record_body_html)?,
+                charges: ChargeInformation::build(&record_body_html)?,
             })
         }
     }
@@ -80,8 +142,8 @@ async fn fetch_inmate_sysids(
     client: &reqwest::Client,
     url: &str,
 ) -> Result<Vec<String>, crate::Error> {
-    let sys_id_selector = scraper::Selector::parse(".inmates-table tr td a[href]")
-        .expect("Failed to parse inmates-table for sys_id url");
+    let sys_id_selector =
+        scraper::Selector::parse(".inmates-table tr td a[href]").map_err(|_| Error::ParseError)?;
     let mut ret_urls = Vec::new();
 
     let res = client
