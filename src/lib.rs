@@ -1,5 +1,7 @@
-use log::{debug, error, info, trace, warn};
 use std::fmt;
+
+use log::{debug, error, info, trace, warn};
+use std::env;
 
 #[derive(Debug)]
 pub enum Error {
@@ -124,6 +126,7 @@ pub async fn fetch_records(
         }
     };
 
+    let stop_early = env::var("STOP_EARLY").is_ok();
     for sys_id in sys_ids.iter() {
         let record = Record::build(client, sys_id).await;
         match record {
@@ -134,6 +137,10 @@ pub async fn fetch_records(
             Err(e) => {
                 error!("Error building record: {:#?} for {sys_id}. Continuing", e);
             }
+        }
+        if stop_early {
+            info!("'STOP_EARLY' detected- stopping early");
+            return Ok(records);
         }
         // TODO: use config value to set sleep duration
         tokio::time::sleep(std::time::Duration::from_secs(10)).await;
