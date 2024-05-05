@@ -69,13 +69,13 @@ pub mod inmate {
 
     #[derive(Debug)]
     pub struct Bond {
-        bond_type: String,
-        bond_amount: u64,
+        pub bond_type: String,
+        pub bond_amount: u64,
     }
 
     #[derive(Debug)]
     pub struct BondInformation {
-        bonds: Vec<Bond>,
+        pub bonds: Vec<Bond>,
     }
 
     impl BondInformation {
@@ -121,13 +121,98 @@ pub mod inmate {
     }
 
     #[derive(Debug)]
-    pub struct ChargeInformation {}
+    pub enum ChargeGrade {
+        Felony,
+        Misdemeanor,
+    }
+
+    impl ChargeGrade {
+        pub fn from_string(s: &str) -> ChargeGrade {
+            match s.to_lowercase().as_str() {
+                "felony" => ChargeGrade::Felony,
+                "misdemeanor" => ChargeGrade::Misdemeanor,
+                _ => {
+                    warn!("Unknown charge grade: {:#?}. Defaulting to Misdemeanor", s);
+                    ChargeGrade::Misdemeanor
+                }
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct Charge {
+        pub description: String,
+        pub grade: ChargeGrade,
+        pub offense_date: String,
+    }
+
+    #[derive(Debug)]
+    pub struct ChargeInformation {
+        pub charges: Vec<Charge>,
+    }
 
     impl ChargeInformation {
         pub fn build(html: &scraper::Html) -> Result<ChargeInformation, crate::Error> {
             trace!("Building ChargeInformation from HTML: {:#?}", html);
+            let mut charges = Vec::new();
 
-            Ok(ChargeInformation {})
+            let row_selector = scraper::Selector::parse(".inmates-charges-table tbody tr")
+                .map_err(|_| crate::Error::ParseError)?;
+            let td_selector =
+                scraper::Selector::parse("td").map_err(|_| crate::Error::ParseError)?;
+
+            for charge_row in html.select(&row_selector) {
+                let mut td = charge_row.select(&td_selector);
+
+                let description = match td.nth(1) {
+                    Some(td) => td.text().collect::<String>().trim().to_string(),
+                    None => {
+                        warn!(
+                            "No description found in row: {:#?}. Accepting blank description!",
+                            charge_row
+                        );
+                        String::from("")
+                    }
+                };
+
+                let grade = match td.nth(0) {
+                    Some(grade) => {
+                        ChargeGrade::from_string(&grade.text().collect::<String>().trim())
+                    }
+                    None => {
+                        warn!(
+                            "No grade found in row: {:#?}. Defaulting to Misdemeanor!",
+                            charge_row
+                        );
+                        ChargeGrade::Misdemeanor
+                    }
+                };
+
+                let offense_date = match td.nth(0) {
+                    Some(date) => date.text().collect::<String>().trim().to_string(),
+                    None => {
+                        warn!(
+                            "No offense date found in row: {:#?}. Assuming date is today!",
+                            charge_row
+                        );
+                        // TODO! Verify this works nicely with postgres
+                        chrono::Utc::now().to_string()
+                    }
+                };
+
+                charges.push(Charge {
+                    description,
+                    grade,
+                    offense_date,
+                })
+            }
+
+            if charges.is_empty() {
+                error!("No charges found in HTML: {:#?}", html.html());
+                return Err(crate::Error::ParseError);
+            }
+
+            Ok(ChargeInformation { charges })
         }
     }
 
