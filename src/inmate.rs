@@ -3,63 +3,162 @@ use log::{error, info, trace, warn};
 use crate::utils::dollars_to_cents;
 use scraper::{Html, Selector};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct InmateProfile {
     pub first_name: String,
-    pub middle_name: String,
+    pub middle_name: Option<String>,
     pub last_name: String,
-    pub affix: String,
-    pub perm_id: String,
-    pub sex: String,
+    pub affix: Option<String>,
+    pub perm_id: Option<String>,
+    pub sex: Option<String>,
     pub dob: String,
-    pub arrest_agency: String,
+    pub arrest_agency: Option<String>,
     pub booking_date_iso8601: String,
-    pub booking_number: String,
-    pub height: String,
-    pub weight: String,
-    pub race: String,
-    pub eye_color: String,
+    pub booking_number: Option<String>,
+    pub height: Option<String>,
+    pub weight: Option<String>,
+    pub race: Option<String>,
+    pub eye_color: Option<String>,
     pub aliases: Vec<String>,
     pub img_blob: Vec<u8>,
-    pub scil_sys_id: String,
+    pub scil_sys_id: Option<String>,
     pub embedding: Vec<f32>,
 }
 
 impl InmateProfile {
-    pub fn build(html: &Html) -> Result<InmateProfile, crate::Error> {
+    pub fn build(html: &Html, sys_id: &str) -> Result<InmateProfile, crate::Error> {
         trace!("Building InmateProfile from HTML: {:#?}", html);
+        let mut profile = InmateProfile::default();
+        profile.scil_sys_id = Some(sys_id.to_string());
+        profile.set_core_profile_data(html)?;
 
-        Ok(InmateProfile {
-            first_name: String::new(),
-            middle_name: String::new(),
-            last_name: String::new(),
-            affix: String::new(),
-            perm_id: String::new(),
-            sex: String::new(),
-            dob: String::new(),
-            arrest_agency: String::new(),
-            booking_date_iso8601: String::new(),
-            booking_number: String::new(),
-            height: String::new(),
-            weight: String::new(),
-            race: String::new(),
-            eye_color: String::new(),
-            aliases: Vec::new(),
-            img_blob: Vec::new(),
-            scil_sys_id: String::new(),
-            embedding: Vec::new(),
-        })
+        // TODO! Set img and embedding
+        if profile.first_name.is_empty()
+            || profile.last_name.is_empty()
+            || profile.dob.is_empty()
+            || profile.booking_date_iso8601.is_empty()
+        {
+            error!("Building a profile requires core attributes: first name, last name, dob, booking date. Current core attributes: {:#?}", profile.get_core_attributes());
+            return Err(crate::Error::ParseError);
+        }
+
+        Ok(profile)
+    }
+
+    fn set_core_profile_data(&mut self, html: &Html) -> Result<(), crate::Error> {
+        let num_dts_of_interest = 15;
+        let mut found_dts = 0;
+
+        let profile_selector =
+            Selector::parse(".table-display").map_err(|_| crate::Error::ParseError)?;
+        let dt_selector = Selector::parse("dt").map_err(|_| crate::Error::ParseError)?;
+        let dd_selector = Selector::parse("dd").map_err(|_| crate::Error::ParseError)?;
+        for table in html.select(&profile_selector) {
+            let mut dts = table.select(&dt_selector);
+            let mut dds = table.select(&dd_selector);
+
+            // Because dt and dd come in pairs, we can effectively iterate them as a zip(dt, dd)
+            // dt is the key, and dd is the value
+            while let (Some(dt), Some(dd)) = (dts.next(), dds.next()) {
+                if let Some(dt_text) = dt.text().next() {
+                    // Sometimes, dd will be empty. For example, when an inmate has no middle name.
+                    let dd_text = dd.text().next().unwrap_or_default().trim().to_string();
+                    match dt_text.trim().to_ascii_lowercase().as_str() {
+                        "first:" => {
+                            self.first_name = dd_text;
+                            found_dts += 1;
+                        }
+                        "middle:" => {
+                            self.middle_name = (!dd_text.is_empty()).then(|| dd_text);
+                            found_dts += 1;
+                        }
+                        "last:" => {
+                            self.last_name = dd_text;
+                            found_dts += 1;
+                        }
+                        "affix:" => {
+                            self.affix = (!dd_text.is_empty()).then(|| dd_text);
+                            found_dts += 1;
+                        }
+                        "permanent id:" => {
+                            self.perm_id = (!dd_text.is_empty()).then(|| dd_text);
+                            found_dts += 1;
+                        }
+                        "sex:" => {
+                            self.sex = (!dd_text.is_empty()).then(|| dd_text);
+                            found_dts += 1;
+                        }
+                        "date of birth:" => {
+                            self.dob = dd_text;
+                            found_dts += 1;
+                        }
+                        "height:" => {
+                            self.height = (!dd_text.is_empty()).then(|| dd_text);
+                            found_dts += 1;
+                        }
+                        "weight:" => {
+                            self.weight = (!dd_text.is_empty()).then(|| dd_text);
+                            found_dts += 1;
+                        }
+                        "race:" => {
+                            self.race = (!dd_text.is_empty()).then(|| dd_text);
+                            found_dts += 1;
+                        }
+                        "eye color:" => {
+                            self.eye_color = (!dd_text.is_empty()).then(|| dd_text);
+                            found_dts += 1;
+                        }
+                        "alias(es):" => {
+                            // TODO! validate this
+                            self.aliases = dd_text
+                                .split(',')
+                                .map(|s| s.trim().to_string())
+                                .filter(|s| !s.is_empty())
+                                .collect();
+                            found_dts += 1;
+                        }
+                        "committing agency:" => {
+                            self.arrest_agency = (!dd_text.is_empty()).then(|| dd_text);
+                            found_dts += 1;
+                        }
+                        "booking date time:" => {
+                            self.booking_date_iso8601 = dd_text;
+                            found_dts += 1;
+                        }
+                        "booking number:" => {
+                            self.booking_number = (!dd_text.is_empty()).then(|| dd_text);
+                            found_dts += 1;
+                        }
+                        _ => {
+                            // Do nothing, because we've already advanced dt and dd iterators
+                            continue;
+                        }
+                    }
+                } else {
+                    warn!("No text found in dt: {:#?}. Skipping...", dt);
+                    continue;
+                }
+            }
+        }
+
+        if found_dts != num_dts_of_interest {
+            warn!(
+                "Found {} data points of interest, expected {}. Continuing...",
+                found_dts, num_dts_of_interest
+            );
+        }
+        Ok(())
     }
 
     pub fn get_full_name(&self) -> String {
         let mut name = String::from(&self.first_name);
-        if !self.middle_name.is_empty() {
-            name.push_str(&format!(" {}", self.middle_name));
+        if let Some(middle) = &self.middle_name {
+            name.push_str(&format!(" {}", middle));
         }
         name.push_str(&format!(" {}", self.last_name));
 
-        if !self.affix.is_empty() {
-            name.push_str(&format!(", {}", self.affix));
+        if let Some(affix) = &self.affix {
+            name.push_str(&format!(", {}", affix));
         }
 
         name
@@ -229,8 +328,11 @@ pub struct Record {
 impl Record {
     // We should probably update this code to return an option type
     // There is so many different ways to fail here, we can write our own error types, or just return an option
-    pub async fn build(client: &reqwest::Client, url: &str) -> Result<Record, crate::Error> {
-        let request_url = format!("https://www.scottcountyiowa.us/sheriff/inmates.php{}", url);
+    pub async fn build(client: &reqwest::Client, sys_id: &str) -> Result<Record, crate::Error> {
+        let request_url = format!(
+            "https://www.scottcountyiowa.us/sheriff/inmates.php{}",
+            sys_id
+        );
         info!("Building record for URL: {:#?}", request_url);
         let record_body = client
             .get(&request_url)
@@ -245,7 +347,7 @@ impl Record {
 
         Ok(Record {
             url: request_url,
-            profile: InmateProfile::build(&record_body_html)?,
+            profile: InmateProfile::build(&record_body_html, sys_id)?,
             bond: BondInformation::build(&record_body_html)?,
             charges: ChargeInformation::build(&record_body_html)?,
         })
