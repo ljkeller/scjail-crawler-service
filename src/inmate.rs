@@ -4,13 +4,72 @@ use crate::utils::dollars_to_cents;
 use scraper::{Html, Selector};
 
 #[derive(Debug)]
-pub struct InmateProfile {}
+pub struct InmateProfile {
+    pub first_name: String,
+    pub middle_name: String,
+    pub last_name: String,
+    pub affix: String,
+    pub perm_id: String,
+    pub sex: String,
+    pub dob: String,
+    pub arrest_agency: String,
+    pub booking_date_iso8601: String,
+    pub booking_number: String,
+    pub height: String,
+    pub weight: String,
+    pub race: String,
+    pub eye_color: String,
+    pub aliases: Vec<String>,
+    pub img_blob: Vec<u8>,
+    pub scil_sys_id: String,
+    pub embedding: Vec<f32>,
+}
 
 impl InmateProfile {
     pub fn build(html: &Html) -> Result<InmateProfile, crate::Error> {
         trace!("Building InmateProfile from HTML: {:#?}", html);
 
-        Ok(InmateProfile {})
+        Ok(InmateProfile {
+            first_name: String::new(),
+            middle_name: String::new(),
+            last_name: String::new(),
+            affix: String::new(),
+            perm_id: String::new(),
+            sex: String::new(),
+            dob: String::new(),
+            arrest_agency: String::new(),
+            booking_date_iso8601: String::new(),
+            booking_number: String::new(),
+            height: String::new(),
+            weight: String::new(),
+            race: String::new(),
+            eye_color: String::new(),
+            aliases: Vec::new(),
+            img_blob: Vec::new(),
+            scil_sys_id: String::new(),
+            embedding: Vec::new(),
+        })
+    }
+
+    pub fn get_full_name(&self) -> String {
+        let mut name = String::from(&self.first_name);
+        if !self.middle_name.is_empty() {
+            name.push_str(&format!(" {}", self.middle_name));
+        }
+        name.push_str(&format!(" {}", self.last_name));
+
+        if !self.affix.is_empty() {
+            name.push_str(&format!(", {}", self.affix));
+        }
+
+        name
+    }
+
+    pub fn get_core_attributes(&self) -> String {
+        format!(
+            "{} {} dob=[{}] booking date=[{}]",
+            self.first_name, self.last_name, self.dob, self.booking_date_iso8601
+        )
     }
 }
 
