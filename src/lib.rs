@@ -22,6 +22,37 @@ impl std::fmt::Display for Error {
     }
 }
 
+/// Returns the cent value of a given dollar string, assuming the string is in the format of "$x.yz", where x is a non-negative integer and yz are two base 10 digits.
+///
+/// ## Warning
+///
+/// This function will break when given negative values, or values without their cents.
+///
+/// [`unwrap_or_else`]: Result::unwrap_or_else
+///
+/// # Examples
+///
+/// ```
+/// let dollars = "$2,200.75";
+/// assert_eq!(scjail_crawler_service::dollars_to_cents(&dollars), 220075);
+///
+/// let dollars = "$0.00";
+/// assert_eq!(scjail_crawler_service::dollars_to_cents(&dollars), 0);
+/// ```
+pub fn dollars_to_cents(dollars: &str) -> u64 {
+    if let Ok(cents) = dollars
+        .chars()
+        .filter(|c| c.is_digit(10))
+        .collect::<String>()
+        .parse::<u64>()
+    {
+        cents
+    } else {
+        warn!("Something went wrong parsing {dollars} for cents value. Returning 0.");
+        0
+    }
+}
+
 pub mod inmate {
     use log::{error, info, trace, warn};
 
@@ -68,8 +99,7 @@ pub mod inmate {
                     }
                 };
                 let bond_amount = match td.nth(0) {
-                    // TODO! Implement dollars to cents conversion (that drops non-numeric characters)
-                    Some(td) => td.text().collect::<String>().parse::<u64>().unwrap_or(0),
+                    Some(td) => crate::dollars_to_cents(&td.text().collect::<String>()),
                     None => {
                         warn!("No bond amount found in row: {:#?}. Continuing in hope there is a non-corrupt bond amount", row);
                         continue;
