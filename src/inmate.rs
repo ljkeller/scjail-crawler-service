@@ -20,19 +20,51 @@ pub struct InmateProfile {
     pub race: Option<String>,
     pub eye_color: Option<String>,
     pub aliases: Vec<String>,
-    pub img_blob: Vec<u8>,
+    pub img_blob: Option<Vec<u8>>,
     pub scil_sys_id: Option<String>,
     pub embedding: Vec<f32>,
 }
 
 impl InmateProfile {
-    pub fn build(html: &Html, sys_id: &str) -> Result<InmateProfile, crate::Error> {
+    pub async fn build(
+        html: &Html,
+        sys_id: &str,
+        client: &reqwest::Client,
+    ) -> Result<InmateProfile, crate::Error> {
         trace!("Building InmateProfile from HTML: {:#?}", html);
+
+        // fire off img download request before parsing HTML
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        let img_selector = Selector::parse(".inmates img").map_err(|_| crate::Error::ParseError)?;
+        let img = if let Some(img_url) = html
+            .select(&img_selector)
+            .next()
+            .and_then(|img| img.attr("src"))
+        {
+            let full_img_url = format!("https:{}", img_url);
+            info!("Found img URL: {:#?}", full_img_url);
+            Some(client.get(full_img_url).send())
+        } else {
+            None
+        };
+
         let mut profile = InmateProfile::default();
         profile.scil_sys_id = Some(sys_id.to_string());
         profile.set_core_profile_data(html)?;
 
-        // TODO! Set img and embedding
+        // Not every inmate will have an image,
+        if let Some(img) = img {
+            match img.await {
+                Ok(img_resp) => {
+                    if let Ok(img_blob) = img_resp.bytes().await {
+                        profile.img_blob = Some(img_blob.to_vec());
+                    }
+                }
+                Err(e) => warn!("Error fetching img: {:#?}, ignoring...", e),
+            }
+        }
+
+        // TODO! Get and set embedding
         if profile.first_name.is_empty()
             || profile.last_name.is_empty()
             || profile.dob.is_empty()
@@ -347,7 +379,7 @@ impl Record {
 
         Ok(Record {
             url: request_url,
-            profile: InmateProfile::build(&record_body_html, sys_id)?,
+            profile: InmateProfile::build(&record_body_html, sys_id, client).await?,
             bond: BondInformation::build(&record_body_html)?,
             charges: ChargeInformation::build(&record_body_html)?,
         })
