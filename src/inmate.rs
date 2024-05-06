@@ -19,10 +19,10 @@ pub struct InmateProfile {
     pub weight: Option<String>,
     pub race: Option<String>,
     pub eye_color: Option<String>,
-    pub aliases: Vec<String>,
+    pub aliases: Option<Vec<String>>,
     pub img_blob: Option<Vec<u8>>,
     pub scil_sys_id: Option<String>,
-    pub embedding: Vec<f32>,
+    pub embedding: Option<Vec<f32>>,
 }
 
 impl InmateProfile {
@@ -75,6 +75,19 @@ impl InmateProfile {
         }
 
         Ok(profile)
+    }
+
+    fn get_aliases(aliases: &str) -> Option<Vec<String>> {
+        let alias_vec = aliases
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<String>>();
+
+        match alias_vec.len() {
+            0 => return None,
+            _ => return Some(alias_vec),
+        }
     }
 
     fn set_core_profile_data(&mut self, html: &Html) -> Result<(), crate::Error> {
@@ -141,12 +154,7 @@ impl InmateProfile {
                             found_dts += 1;
                         }
                         "alias(es):" => {
-                            // TODO! validate this
-                            self.aliases = dd_text
-                                .split(',')
-                                .map(|s| s.trim().to_string())
-                                .filter(|s| !s.is_empty())
-                                .collect();
+                            self.aliases = InmateProfile::get_aliases(&dd_text);
                             found_dts += 1;
                         }
                         "committing agency:" => {
@@ -201,6 +209,64 @@ impl InmateProfile {
             "{} {} dob=[{}] booking date=[{}]",
             self.first_name, self.last_name, self.dob, self.booking_date_iso8601
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_aliases_basic() {
+        let aliases = "John Doe, Jane Doe";
+        assert_eq!(
+            InmateProfile::get_aliases(aliases),
+            Some(vec!["John Doe".to_string(), "Jane Doe".to_string()])
+        );
+
+        let aliases = "John, Jane Doe, Bob, Bobby, Bobert, Bob er tin a";
+        assert_eq!(
+            InmateProfile::get_aliases(aliases),
+            Some(vec![
+                "John".to_string(),
+                "Jane Doe".to_string(),
+                "Bob".to_string(),
+                "Bobby".to_string(),
+                "Bobert".to_string(),
+                "Bob er tin a".to_string()
+            ])
+        );
+    }
+
+    #[test]
+    fn test_get_aliases_advanced() {
+        let aliases = "John Doe, , , Jane Doe,    Marty McFly,  ";
+        assert_eq!(
+            InmateProfile::get_aliases(aliases),
+            Some(vec![
+                "John Doe".to_string(),
+                "Jane Doe".to_string(),
+                "Marty McFly".to_string()
+            ])
+        );
+    }
+
+    #[test]
+    fn test_aliases_empty_basic() {
+        let aliases = "";
+        assert_eq!(InmateProfile::get_aliases(aliases), None);
+        let aliases = "             ";
+        assert_eq!(InmateProfile::get_aliases(aliases), None);
+        let aliases = ",";
+        assert_eq!(InmateProfile::get_aliases(aliases), None);
+    }
+
+    #[test]
+    fn test_alias_empty_advanced() {
+        let aliases = ",,, ,   ,";
+        assert_eq!(InmateProfile::get_aliases(aliases), None);
+        let aliases = " , ";
+        assert_eq!(InmateProfile::get_aliases(aliases), None);
     }
 }
 
