@@ -12,7 +12,10 @@ async fn main() -> Result<(), crate::Error> {
         "https://www.scottcountyiowa.us/sheriff/inmates.php?comdate=today".into()
     };
 
-    let client = reqwest::Client::new();
+    let client_builder = reqwest::ClientBuilder::new().timeout(std::time::Duration::from_secs(15));
+    let client = client_builder
+        .build()
+        .map_err(|_| Error::InternalError(String::from("Building reqwest client failed!")))?;
     let sys_ids = fetch_records(&client, &url).await;
     match sys_ids {
         Ok(sys_ids) => {
