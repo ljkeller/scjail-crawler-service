@@ -1,10 +1,14 @@
 use log::{error, info};
+use sqlx::{postgres::PgPoolOptions, Executor};
 
 use scjail_crawler_service::{fetch_records, Error};
 
 #[tokio::main]
 async fn main() -> Result<(), crate::Error> {
     pretty_env_logger::init();
+    let pool_res = PgPoolOptions::new()
+        .max_connections(5)
+        .connect("postgres://postgres:123@localhost:5432");
 
     let url = if let Some(url) = std::env::args().nth(1) {
         url
@@ -26,6 +30,17 @@ async fn main() -> Result<(), crate::Error> {
             return Err(e);
         }
     }
+
+    let pool = pool_res
+        .await
+        .map_err(|_| Error::InternalError(String::from("Failed to connect to database!")))?;
+
+    let inmates_count = pool
+        .execute("SELECT * FROM inmate")
+        .await
+        .map_err(|_| Error::InternalError(String::from("Failed to execute query!")))?;
+
+    info!("Inmates count: {:#?}", inmates_count);
 
     Ok(())
 }
