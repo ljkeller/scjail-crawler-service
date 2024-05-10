@@ -5,18 +5,6 @@ use log::warn;
 /// ## Warning
 ///
 /// This function will break when given negative values, or values without their cents.
-///
-/// [`unwrap_or_else`]: Result::unwrap_or_else
-///
-/// # Examples
-///
-/// ```
-/// let dollars = "$2,200.75";
-/// assert_eq!(scjail_crawler_service::dollars_to_cents(&dollars), 220075);
-///
-/// let dollars = "$0.00";
-/// assert_eq!(scjail_crawler_service::dollars_to_cents(&dollars), 0);
-/// ```
 pub fn dollars_to_cents(dollars: &str) -> u64 {
     if let Ok(cents) = dollars
         .chars()
@@ -28,5 +16,22 @@ pub fn dollars_to_cents(dollars: &str) -> u64 {
     } else {
         warn!("Something went wrong parsing {dollars} for cents value. Returning 0.");
         0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dollars_to_cents_positive() {
+        let dollars = "$2,200.75";
+        assert_eq!(dollars_to_cents(&dollars), 220075);
+    }
+
+    #[test]
+    fn test_dollars_to_cents_zero() {
+        let dollars = "$0.00";
+        assert_eq!(dollars_to_cents(&dollars), 0);
     }
 }

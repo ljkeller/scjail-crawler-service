@@ -42,5 +42,42 @@ async fn main() -> Result<(), crate::Error> {
 
     info!("Inmates count: {:#?}", inmates_count);
 
+    sqlx::query_file!("queries/create_inmate.sql")
+        .execute(&pool)
+        .await
+        .map_err(|_| {
+            Error::InternalError(String::from("Failed to execute create_inmate query!"))
+        })?;
+    sqlx::query_file!("queries/create_alias.sql")
+        .execute(&pool)
+        .await
+        .map_err(|_| {
+            Error::InternalError(String::from("Failed to execute create_inmate query!"))
+        })?;
+    sqlx::query_file!("queries/create_bond.sql")
+        .execute(&pool)
+        .await
+        .map_err(|_| {
+            Error::InternalError(String::from("Failed to execute create_inmate query!"))
+        })?;
+    sqlx::query_file!("queries/create_charge.sql")
+        .execute(&pool)
+        .await
+        .map_err(|_| {
+            Error::InternalError(String::from("Failed to execute create_inmate query!"))
+        })?;
+    sqlx::query_file!("queries/create_img.sql")
+        .execute(&pool)
+        .await
+        .map_err(|_| {
+            Error::InternalError(String::from("Failed to execute create_inmate query!"))
+        })?;
+    sqlx::query_file!("queries/create_inmate_alias.sql")
+        .execute(&pool)
+        .await
+        .map_err(|_| {
+            Error::InternalError(String::from("Failed to execute create_inmate query!"))
+        })?;
+
     Ok(())
 }
