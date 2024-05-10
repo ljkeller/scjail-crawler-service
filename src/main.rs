@@ -1,6 +1,7 @@
 use log::{error, info};
 use sqlx::{postgres::PgPoolOptions, Executor};
 
+use scjail_crawler_service::serialize::create_dbs;
 use scjail_crawler_service::{fetch_records, Error};
 
 #[tokio::main]
@@ -34,6 +35,7 @@ async fn main() -> Result<(), crate::Error> {
     let pool = pool_res
         .await
         .map_err(|_| Error::InternalError(String::from("Failed to connect to database!")))?;
+    create_dbs(&pool).await?;
 
     let inmates_count = pool
         .execute("SELECT * FROM inmate")
@@ -41,43 +43,6 @@ async fn main() -> Result<(), crate::Error> {
         .map_err(|_| Error::InternalError(String::from("Failed to execute query!")))?;
 
     info!("Inmates count: {:#?}", inmates_count);
-
-    sqlx::query_file!("queries/create_inmate.sql")
-        .execute(&pool)
-        .await
-        .map_err(|_| {
-            Error::InternalError(String::from("Failed to execute create_inmate query!"))
-        })?;
-    sqlx::query_file!("queries/create_alias.sql")
-        .execute(&pool)
-        .await
-        .map_err(|_| {
-            Error::InternalError(String::from("Failed to execute create_inmate query!"))
-        })?;
-    sqlx::query_file!("queries/create_bond.sql")
-        .execute(&pool)
-        .await
-        .map_err(|_| {
-            Error::InternalError(String::from("Failed to execute create_inmate query!"))
-        })?;
-    sqlx::query_file!("queries/create_charge.sql")
-        .execute(&pool)
-        .await
-        .map_err(|_| {
-            Error::InternalError(String::from("Failed to execute create_inmate query!"))
-        })?;
-    sqlx::query_file!("queries/create_img.sql")
-        .execute(&pool)
-        .await
-        .map_err(|_| {
-            Error::InternalError(String::from("Failed to execute create_inmate query!"))
-        })?;
-    sqlx::query_file!("queries/create_inmate_alias.sql")
-        .execute(&pool)
-        .await
-        .map_err(|_| {
-            Error::InternalError(String::from("Failed to execute create_inmate query!"))
-        })?;
 
     Ok(())
 }

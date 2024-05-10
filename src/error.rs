@@ -11,6 +11,8 @@ pub enum Error {
     ArgumentError,
     /// Error related to internal application logic, with an additional explanation.
     InternalError(String),
+    /// Error related to PostgreSQL, with additional explanation
+    PostgresError(String),
 }
 
 impl std::error::Error for Error {}
@@ -23,6 +25,15 @@ impl std::fmt::Display for Error {
             Error::ParseError => write!(f, "Parse error"),
             Error::ArgumentError => write!(f, "Argument error"),
             Error::InternalError(explanation) => write!(f, "Internal error: {}", explanation),
+            Error::PostgresError(explanation) => {
+                write!(f, "Internal Postgres error: {}", explanation)
+            }
         }
+    }
+}
+
+impl From<sqlx::Error> for Error {
+    fn from(e: sqlx::Error) -> Self {
+        Error::PostgresError(format!("Postgres error {}", e))
     }
 }

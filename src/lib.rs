@@ -1,5 +1,6 @@
 pub mod error;
 pub mod inmate;
+pub mod serialize;
 mod utils;
 
 use log::{debug, error, info, trace, warn};
