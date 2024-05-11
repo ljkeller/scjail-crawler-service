@@ -32,6 +32,15 @@ pub async fn create_dbs(pool: &PgPool) -> Result<(), Error> {
     Ok(())
 }
 
+pub async fn inmate_count(pool: &PgPool) -> Result<i64, Error> {
+    let res = sqlx::query!("SELECT COUNT(*) FROM inmate")
+        .fetch_one(pool)
+        .await?;
+    Ok(res
+        .count
+        .expect("Expect count to be present on on inmate count query"))
+}
+
 pub async fn serialize_record(record: Record, pool: &PgPool) -> Result<i32, Error> {
     // TODO: use query! macro for compile time verification
     let res = sqlx::query!(

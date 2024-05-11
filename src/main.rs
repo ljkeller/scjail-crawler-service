@@ -1,15 +1,15 @@
 use log::{info, warn};
-use sqlx::{postgres::PgPoolOptions, query};
+use sqlx::postgres::PgPoolOptions;
+use std::env;
 
-use scjail_crawler_service::serialize::{create_dbs, serialize_record};
+use scjail_crawler_service::serialize::{create_dbs, inmate_count, serialize_record};
 use scjail_crawler_service::{fetch_records, Error};
 
 #[tokio::main]
 async fn main() -> Result<(), crate::Error> {
     pretty_env_logger::init();
-    let pool_res = PgPoolOptions::new()
-        .max_connections(5)
-        .connect("postgres://postgres:123@localhost:5432");
+    let pg_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set!");
+    let pool_res = PgPoolOptions::new().max_connections(5).connect(&pg_url);
 
     let url = if let Some(url) = std::env::args().nth(1) {
         url
@@ -32,26 +32,28 @@ async fn main() -> Result<(), crate::Error> {
 
     let pool = pool_res
         .await
-        .map_err(|_| Error::InternalError(String::from("Failed to connect to database!")))?;
+        .map_err(|_| Error::InternalError(format!("Failed to connect to database: {}", pg_url)))?;
     create_dbs(&pool).await?;
 
+    let (mut inserted_count, mut failed_count) = (0, 0);
     for record in records {
         match serialize_record(record, &pool).await {
-            Ok(id) => {
-                info!("Record serialized with id: {:#?}", id);
+            Ok(_) => {
+                inserted_count += 1;
             }
             Err(e) => {
                 warn!("Failed to serialize record {:#?}", e);
+                failed_count += 1;
             }
         }
     }
 
-    let inmates_count = query!("SELECT COUNT(*) FROM inmate")
-        .fetch_one(&pool)
-        .await
-        .map_err(|_| Error::InternalError(String::from("Failed to execute query!")))?;
-
-    info!("Total inmates count: {:#?}", inmates_count);
+    info!(
+        "Inserted {} records, failed to insert {} records. Total records: {}",
+        inserted_count,
+        failed_count,
+        inmate_count(&pool).await?
+    );
 
     Ok(())
 }
