@@ -1,5 +1,5 @@
-use log::info;
-use sqlx::{postgres::PgPoolOptions, Executor};
+use log::{info, warn};
+use sqlx::{postgres::PgPoolOptions, query};
 
 use scjail_crawler_service::serialize::{create_dbs, serialize_record};
 use scjail_crawler_service::{fetch_records, Error};
@@ -22,7 +22,7 @@ async fn main() -> Result<(), crate::Error> {
         .build()
         .map_err(|_| Error::InternalError(String::from("Building reqwest client failed!")))?;
 
-    let mut records = if let Ok(records) = fetch_records(&client, &url).await {
+    let records = if let Ok(records) = fetch_records(&client, &url).await {
         records
     } else {
         return Err(Error::InternalError(String::from(
@@ -35,15 +35,23 @@ async fn main() -> Result<(), crate::Error> {
         .map_err(|_| Error::InternalError(String::from("Failed to connect to database!")))?;
     create_dbs(&pool).await?;
 
-    let inmates_count = pool
-        .execute("SELECT * FROM inmate")
+    for record in records {
+        match serialize_record(record, &pool).await {
+            Ok(id) => {
+                info!("Record serialized with id: {:#?}", id);
+            }
+            Err(e) => {
+                warn!("Failed to serialize record {:#?}", e);
+            }
+        }
+    }
+
+    let inmates_count = query!("SELECT COUNT(*) FROM inmate")
+        .fetch_one(&pool)
         .await
         .map_err(|_| Error::InternalError(String::from("Failed to execute query!")))?;
 
-    info!("Inmates count: {:#?}", inmates_count);
-
-    let first = records.pop().unwrap();
-    serialize_record(first, &pool).await?;
+    info!("Total inmates count: {:#?}", inmates_count);
 
     Ok(())
 }

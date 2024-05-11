@@ -3,7 +3,7 @@ use log::{error, info, trace, warn};
 use crate::utils::dollars_to_cents;
 use scraper::{Html, Selector};
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct InmateProfile {
     pub first_name: String,
     pub middle_name: Option<String>,
@@ -209,6 +209,29 @@ impl InmateProfile {
             "{} {} dob=[{}] booking date=[{}]",
             self.first_name, self.last_name, self.dob, self.booking_date_iso8601
         )
+    }
+}
+
+impl std::fmt::Debug for InmateProfile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InmateProfile")
+            .field("first_name", &self.first_name)
+            .field("middle_name", &self.middle_name)
+            .field("last_name", &self.last_name)
+            .field("affix", &self.affix)
+            .field("perm_id", &self.perm_id)
+            .field("sex", &self.sex)
+            .field("dob", &self.dob)
+            .field("arrest_agency", &self.arrest_agency)
+            .field("booking_date", &self.booking_date_iso8601)
+            .field("booking_number", &self.booking_number)
+            .field("height", &self.height)
+            .field("weight", &self.weight)
+            .field("race", &self.race)
+            .field("eye_color", &self.eye_color)
+            .field("aliases", &self.aliases)
+            .field("scil_sys_id", &self.scil_sys_id)
+            .finish()
     }
 }
 

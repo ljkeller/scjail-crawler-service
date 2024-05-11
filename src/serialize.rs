@@ -34,44 +34,40 @@ pub async fn create_dbs(pool: &PgPool) -> Result<(), Error> {
 
 pub async fn serialize_record(record: Record, pool: &PgPool) -> Result<i32, Error> {
     // TODO: use query! macro for compile time verification
-    let res = sqlx::query(
+    let res = sqlx::query!(
         r#"
         INSERT INTO inmate
         (
             first_name, middle_name, last_name, affix, permanent_id,
             sex, dob, arresting_agency, booking_date, booking_number, 
-            height, weight, race, eye_color, img_url, scil_sysid
+            height, weight, race, eye_color, scil_sysid
         )
         VALUES
         (
             $1, $2, $3, $4, $5,
-            $6, CAST($7 AS DATE), $8, $9::timestamptz, $10,
-            $11, $12, $13, $14, $15, $16
+            $6, $7::date, $8, $9::timestamptz, $10,
+            $11, $12, $13, $14, $15
         )
         RETURNING id
         "#,
+        record.profile.first_name,
+        record.profile.middle_name,
+        record.profile.last_name,
+        record.profile.affix,
+        record.profile.perm_id,
+        record.profile.sex,
+        record.profile.dob as _, // TODO: avoid override and use NaiveDate
+        record.profile.arrest_agency,
+        record.profile.booking_date_iso8601 as _, // TODO: avoid override and use NaiveDateTime
+        record.profile.booking_number,
+        record.profile.height,
+        record.profile.weight,
+        record.profile.race,
+        record.profile.eye_color,
+        record.profile.scil_sys_id,
     )
-    .bind(record.profile.first_name)
-    .bind(record.profile.middle_name)
-    .bind(record.profile.last_name)
-    .bind(record.profile.affix)
-    .bind(record.profile.perm_id)
-    .bind(record.profile.sex)
-    .bind(record.profile.dob)
-    .bind(record.profile.arrest_agency)
-    .bind(record.profile.booking_date_iso8601)
-    .bind(record.profile.booking_number)
-    .bind(record.profile.height)
-    .bind(record.profile.weight)
-    .bind(record.profile.race)
-    .bind(record.profile.eye_color)
-    .bind(String::from("")) //TODO: Add img_ur)
-    .bind(record.profile.scil_sys_id)
-    .execute(pool)
-    // .fetch_one(pool)
+    .fetch_one(pool)
     .await?;
 
-    dbg!(res);
-
-    Ok(0)
+    Ok(res.id)
 }
