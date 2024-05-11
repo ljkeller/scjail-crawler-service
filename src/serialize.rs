@@ -1,6 +1,6 @@
 use sqlx::postgres::PgPool;
 
-use crate::inmate::Record;
+use crate::inmate::{InmateProfile, Record};
 use crate::Error;
 
 pub async fn create_dbs(pool: &PgPool) -> Result<(), Error> {
@@ -42,6 +42,16 @@ pub async fn inmate_count(pool: &PgPool) -> Result<i64, Error> {
 }
 
 pub async fn serialize_record(record: Record, pool: &PgPool) -> Result<i32, Error> {
+    let mut transaction = pool.begin().await?;
+    let inserted_id = serialize_profile(record.profile, &mut transaction).await?;
+
+    Ok(inserted_id)
+}
+
+async fn serialize_profile(
+    profile: InmateProfile,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+) -> Result<i32, Error> {
     // TODO: use query! macro for compile time verification
     let res = sqlx::query!(
         r#"
@@ -59,23 +69,23 @@ pub async fn serialize_record(record: Record, pool: &PgPool) -> Result<i32, Erro
         )
         RETURNING id
         "#,
-        record.profile.first_name,
-        record.profile.middle_name,
-        record.profile.last_name,
-        record.profile.affix,
-        record.profile.perm_id,
-        record.profile.sex,
-        record.profile.dob as _, // TODO: avoid override and use NaiveDate
-        record.profile.arrest_agency,
-        record.profile.booking_date_iso8601 as _, // TODO: avoid override and use NaiveDateTime
-        record.profile.booking_number,
-        record.profile.height,
-        record.profile.weight,
-        record.profile.race,
-        record.profile.eye_color,
-        record.profile.scil_sys_id,
+        profile.first_name,
+        profile.middle_name,
+        profile.last_name,
+        profile.affix,
+        profile.perm_id,
+        profile.sex,
+        profile.dob as _, // TODO: avoid override and use NaiveDate
+        profile.arrest_agency,
+        profile.booking_date_iso8601 as _, // TODO: avoid override and use NaiveDateTime
+        profile.booking_number,
+        profile.height,
+        profile.weight,
+        profile.race,
+        profile.eye_color,
+        profile.scil_sys_id,
     )
-    .fetch_one(pool)
+    .fetch_one(&mut **transaction)
     .await?;
 
     Ok(res.id)
