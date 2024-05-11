@@ -34,7 +34,7 @@ impl InmateProfile {
         trace!("Building InmateProfile from HTML: {:#?}", html);
 
         // fire off img download request before parsing HTML
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(75)).await;
         let img_selector = Selector::parse(".inmates img").map_err(|_| crate::Error::ParseError)?;
         let img = if let Some(img_url) = html
             .select(&img_selector)

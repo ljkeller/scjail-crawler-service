@@ -1,7 +1,7 @@
-use log::{error, info};
+use log::info;
 use sqlx::{postgres::PgPoolOptions, Executor};
 
-use scjail_crawler_service::serialize::create_dbs;
+use scjail_crawler_service::serialize::{create_dbs, serialize_record};
 use scjail_crawler_service::{fetch_records, Error};
 
 #[tokio::main]
@@ -21,16 +21,14 @@ async fn main() -> Result<(), crate::Error> {
     let client = client_builder
         .build()
         .map_err(|_| Error::InternalError(String::from("Building reqwest client failed!")))?;
-    let sys_ids = fetch_records(&client, &url).await;
-    match sys_ids {
-        Ok(sys_ids) => {
-            info!("Sys IDs: {:#?}", sys_ids);
-        }
-        Err(e) => {
-            error!("Error fetching sys IDs: {:#?}", e);
-            return Err(e);
-        }
-    }
+
+    let mut records = if let Ok(records) = fetch_records(&client, &url).await {
+        records
+    } else {
+        return Err(Error::InternalError(String::from(
+            "Failed to fetch records!",
+        )));
+    };
 
     let pool = pool_res
         .await
@@ -43,6 +41,9 @@ async fn main() -> Result<(), crate::Error> {
         .map_err(|_| Error::InternalError(String::from("Failed to execute query!")))?;
 
     info!("Inmates count: {:#?}", inmates_count);
+
+    let first = records.pop().unwrap();
+    serialize_record(first, &pool).await?;
 
     Ok(())
 }

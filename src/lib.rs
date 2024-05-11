@@ -23,7 +23,7 @@ async fn fetch_inmate_sysids(
         .send()
         .await
         .map_err(|_| Error::NetworkError)?;
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(75)).await;
 
     debug!("Response: {:?} {}", res.version(), res.status());
     let body = res.text().await.map_err(|_| Error::NetworkError)?;
@@ -77,7 +77,7 @@ pub async fn fetch_records(
             return Ok(records);
         }
         // TODO: use config value to set sleep duration
-        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(75)).await;
     }
     Ok(records)
 }
