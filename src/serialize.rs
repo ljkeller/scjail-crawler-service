@@ -43,9 +43,34 @@ pub async fn inmate_count(pool: &PgPool) -> Result<i64, Error> {
 
 pub async fn serialize_record(record: Record, pool: &PgPool) -> Result<i32, Error> {
     let mut transaction = pool.begin().await?;
-    let inserted_id = serialize_profile(record.profile, &mut transaction).await?;
+    let inmate_id = serialize_profile(record.profile, &mut transaction).await?;
 
-    Ok(inserted_id)
+    Ok(inmate_id)
+}
+
+async fn serialize_alias(
+    alias: String,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+) -> Result<i32, Error> {
+    // two possible routes to the query -
+    // -- insert alias, returning id
+    // -- conflict on alias insert (duplicate), return existing alias id
+    let res = sqlx::query!(
+        r#"
+        INSERT INTO alias
+            (alias)
+        VALUES
+            ($1)
+        ON CONFLICT (alias) DO UPDATE
+            SET alias = EXCLUDED.alias
+        RETURNING id
+        "#,
+        alias
+    )
+    .fetch_one(&mut **transaction)
+    .await?;
+
+    Ok(res.id)
 }
 
 async fn serialize_profile(
@@ -53,7 +78,7 @@ async fn serialize_profile(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<i32, Error> {
     // TODO: use query! macro for compile time verification
-    let res = sqlx::query!(
+    let inmate_id = sqlx::query!(
         r#"
         INSERT INTO inmate
         (
@@ -86,7 +111,44 @@ async fn serialize_profile(
         profile.scil_sys_id,
     )
     .fetch_one(&mut **transaction)
+    .await?
+    .id;
+
+    // TODO: error handle failures on profile serialization that can be ignored? Letting
+    // core profile data pass and ignoring the rest?
+    for alias in profile.aliases.into_iter().flatten() {
+        if alias.is_empty() {
+            continue;
+        }
+
+        let alias_id = serialize_alias(alias, transaction).await?;
+
+        sqlx::query!(
+            r#"
+            INSERT INTO inmate_alias
+            (inmate_id, alias_id)
+            VALUES
+            ($1, $2)
+            "#,
+            inmate_id,
+            alias_id
+        )
+        .execute(&mut **transaction)
+        .await?;
+    }
+
+    sqlx::query!(
+        r#"
+        INSERT INTO img
+            (inmate_id, img)
+        VALUES
+            ($1, $2)
+        "#,
+        inmate_id,
+        profile.img_blob
+    )
+    .execute(&mut **transaction)
     .await?;
 
-    Ok(res.id)
+    Ok(inmate_id)
 }
