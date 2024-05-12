@@ -1,6 +1,7 @@
+use log::{info, trace};
 use sqlx::postgres::PgPool;
 
-use crate::inmate::{InmateProfile, Record};
+use crate::inmate::{Bond, Charge, InmateProfile, Record};
 use crate::Error;
 
 pub async fn create_dbs(pool: &PgPool) -> Result<(), Error> {
@@ -43,9 +44,73 @@ pub async fn inmate_count(pool: &PgPool) -> Result<i64, Error> {
 
 pub async fn serialize_record(record: Record, pool: &PgPool) -> Result<i32, Error> {
     let mut transaction = pool.begin().await?;
+    let inmate_info = record.profile.get_core_attributes();
     let inmate_id = serialize_profile(record.profile, &mut transaction).await?;
 
+    for bond in record.bond.bonds {
+        serialize_bond(bond, &inmate_id, &mut transaction).await?;
+    }
+
+    for charge in record.charges.charges {
+        serialize_charge(charge, &inmate_id, &mut transaction).await?;
+    }
+
+    info!(
+        "Successfully serialized {} yielding inmate_id: {}.",
+        inmate_info, inmate_id
+    );
     Ok(inmate_id)
+}
+
+async fn serialize_bond(
+    bond: Bond,
+    inmate_id: &i32,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+) -> Result<(), Error> {
+    // Could do bulk insert here: https://github.com/launchbadge/sqlx/blob/main/FAQ.md#how-can-i-bind-an-array-to-a-values-clause-how-can-i-do-bulk-inserts
+    // But, there is a low amount of bonds per inmate; therefores, its probably overengineering
+    sqlx::query!(
+        r#"
+        INSERT INTO bond
+            (inmate_id, type, amount_pennies)
+        VALUES
+            ($1, $2, $3)
+        "#,
+        inmate_id,
+        bond.bond_type,
+        bond.bond_amount as i32 // TODO: update schema to use i64? bonds are in pennies, so a few billion is possible (I think?) It would be historic...
+    )
+    .execute(&mut **transaction)
+    .await?;
+
+    trace!("Bond serialized: {:#?}", bond);
+    Ok(())
+}
+
+async fn serialize_charge(
+    charge: Charge,
+    inmate_id: &i32,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+) -> Result<(), Error> {
+    // Could do bulk insert here: https://github.com/launchbadge/sqlx/blob/main/FAQ.md#how-can-i-bind-an-array-to-a-values-clause-how-can-i-do-bulk-inserts
+    // But, there is a low amount of bonds per inmate; therefores, its probably overengineering
+    sqlx::query!(
+        r#"
+        INSERT INTO charge
+            (inmate_id, description, grade, offense_date)
+        VALUES
+            ($1, $2, $3, $4)
+        "#,
+        inmate_id,
+        charge.description,
+        charge.grade.to_string(),
+        charge.offense_date
+    )
+    .execute(&mut **transaction)
+    .await?;
+
+    trace!("Charge serialized: {:#?}", charge);
+    Ok(())
 }
 
 async fn serialize_alias(

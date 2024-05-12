@@ -364,6 +364,15 @@ impl ChargeGrade {
     }
 }
 
+impl std::fmt::Display for ChargeGrade {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChargeGrade::Felony => write!(f, "Felony"),
+            ChargeGrade::Misdemeanor => write!(f, "Misdemeanor"),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Charge {
     pub description: String,
