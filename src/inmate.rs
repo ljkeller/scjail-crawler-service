@@ -488,7 +488,7 @@ impl Record {
     }
 
     pub async fn generate_embedding_story(&self) -> Result<String, crate::Error> {
-        let sex_description = match self.profile.sex {
+        let sex_description = match &self.profile.sex {
             Some(sex) => {
                 if sex.to_lowercase() == "male" {
                     "man"
@@ -499,7 +499,7 @@ impl Record {
             None => "person",
         };
 
-        let alias_description = match self.profile.aliases {
+        let alias_description = match &self.profile.aliases {
             Some(aliases) => {
                 format!(
                     "{} is known to the following aliases: {}.",
@@ -513,13 +513,14 @@ impl Record {
         // TODO: format the date for embeddings
         let intro = format!(
             "A {} {} named {} was arrested on {} by {}.",
-            self.profile.race.unwrap_or_default(),
+            self.profile.race.as_ref().unwrap_or(&"".to_string()),
             sex_description,
             self.profile.get_full_name(),
             self.profile.booking_date_iso8601,
             self.profile
                 .arrest_agency
-                .unwrap_or("an unknown agency".to_string())
+                .as_ref()
+                .unwrap_or(&"an unknown agency".to_string())
         );
 
         let charge_description = format!(
@@ -527,7 +528,7 @@ impl Record {
             self.charges
                 .charges
                 .iter()
-                .map(|c| c.description)
+                .map(|c| c.description.to_string())
                 .collect::<Vec<String>>()
                 .join(", "),
             self.bond.get_total_bond_description()
@@ -536,24 +537,36 @@ impl Record {
         let physical_description = format!(
             "{} is described as {} tall, weighing {}, and having {}. {}",
             self.profile.first_name,
-            self.profile.height.unwrap_or("unknown height".to_string()),
-            self.profile.weight.unwrap_or("unkown weight".to_string()),
+            self.profile
+                .height
+                .as_ref()
+                .unwrap_or(&"unknown height".to_string()),
+            self.profile
+                .weight
+                .as_ref()
+                .unwrap_or(&"unkown weight".to_string()),
             self.profile
                 .eye_color
-                .unwrap_or("unknown eye color".to_string()),
+                .as_ref()
+                .unwrap_or(&"unknown eye color".to_string()),
             alias_description
         );
 
         let id_description = format!(
             "The inmate's booking number is {}, and their permanent ID is {}.",
-            self.profile.booking_number.unwrap_or("unknown".to_string()),
-            self.profile.perm_id.unwrap_or_default()
+            self.profile
+                .booking_number
+                .as_ref()
+                .unwrap_or(&"unknown".to_string()),
+            self.profile.perm_id.as_ref().unwrap_or(&"".to_string())
         );
 
         let story = format!(
-            "{} {} {} {} {}",
+            "{} {} {} {}",
             intro, charge_description, physical_description, id_description
         );
         debug!("Generated story: {:#?}", story);
+
+        Ok(story)
     }
 }
