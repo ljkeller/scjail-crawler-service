@@ -37,6 +37,10 @@ async fn main() -> Result<(), crate::Error> {
 
     let (mut inserted_count, mut failed_count) = (0, 0);
     for record in records {
+        info!(
+            "Inserting record: {:#?}",
+            record.generate_embedding_story().await?
+        );
         match serialize_record(record, &pool).await {
             Ok(_) => {
                 inserted_count += 1;

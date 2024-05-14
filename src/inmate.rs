@@ -1,6 +1,6 @@
 use log::{debug, error, info, trace, warn};
 
-use crate::utils::dollars_to_cents;
+use crate::utils::{cents_to_dollars, dollars_to_cents};
 use scraper::{Html, Selector};
 
 #[derive(Default)]
@@ -345,7 +345,16 @@ impl BondInformation {
     }
 
     pub fn get_total_bond_description(&self) -> String {
-        "TODO! Implement this function".to_string()
+        let unbondable = self
+            .bonds
+            .iter()
+            .any(|b| b.bond_type.to_lowercase() == "unbondable");
+        if unbondable {
+            return "unbondable".to_string();
+        } else {
+            let amount_pennies = self.bonds.iter().map(|b| b.bond_amount).sum::<u64>();
+            return cents_to_dollars(amount_pennies);
+        }
     }
 }
 
