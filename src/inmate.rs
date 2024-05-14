@@ -1,4 +1,4 @@
-use log::{error, info, trace, warn};
+use log::{debug, error, info, trace, warn};
 
 use crate::utils::dollars_to_cents;
 use scraper::{Html, Selector};
@@ -343,6 +343,10 @@ impl BondInformation {
 
         Ok(BondInformation { bonds })
     }
+
+    pub fn get_total_bond_description(&self) -> String {
+        "TODO! Implement this function".to_string()
+    }
 }
 
 #[derive(Debug)]
@@ -481,5 +485,75 @@ impl Record {
             bond: BondInformation::build(&record_body_html)?,
             charges: ChargeInformation::build(&record_body_html)?,
         })
+    }
+
+    pub async fn generate_embedding_story(&self) -> Result<String, crate::Error> {
+        let sex_description = match self.profile.sex {
+            Some(sex) => {
+                if sex.to_lowercase() == "male" {
+                    "man"
+                } else {
+                    "woman"
+                }
+            }
+            None => "person",
+        };
+
+        let alias_description = match self.profile.aliases {
+            Some(aliases) => {
+                format!(
+                    "{} is known to the following aliases: {}.",
+                    self.profile.get_full_name(),
+                    aliases.join(", ")
+                )
+            }
+            None => String::from("No known aliases."),
+        };
+
+        // TODO: format the date for embeddings
+        let intro = format!(
+            "A {} {} named {} was arrested on {} by {}.",
+            self.profile.race.unwrap_or_default(),
+            sex_description,
+            self.profile.get_full_name(),
+            self.profile.booking_date_iso8601,
+            self.profile
+                .arrest_agency
+                .unwrap_or("an unknown agency".to_string())
+        );
+
+        let charge_description = format!(
+            "Charges include {}. Bond is set at {}.",
+            self.charges
+                .charges
+                .iter()
+                .map(|c| c.description)
+                .collect::<Vec<String>>()
+                .join(", "),
+            self.bond.get_total_bond_description()
+        );
+
+        let physical_description = format!(
+            "{} is described as {} tall, weighing {}, and having {}. {}",
+            self.profile.first_name,
+            self.profile.height.unwrap_or("unknown height".to_string()),
+            self.profile.weight.unwrap_or("unkown weight".to_string()),
+            self.profile
+                .eye_color
+                .unwrap_or("unknown eye color".to_string()),
+            alias_description
+        );
+
+        let id_description = format!(
+            "The inmate's booking number is {}, and their permanent ID is {}.",
+            self.profile.booking_number.unwrap_or("unknown".to_string()),
+            self.profile.perm_id.unwrap_or_default()
+        );
+
+        let story = format!(
+            "{} {} {} {} {}",
+            intro, charge_description, physical_description, id_description
+        );
+        debug!("Generated story: {:#?}", story);
     }
 }
