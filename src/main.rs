@@ -1,3 +1,4 @@
+use async_openai::{types::CreateEmbeddingRequestArgs, Client as OaiClient};
 use log::{info, warn};
 use sqlx::postgres::PgPoolOptions;
 use std::env;
@@ -22,6 +23,8 @@ async fn main() -> Result<(), crate::Error> {
         .build()
         .map_err(|_| Error::InternalError(String::from("Building reqwest client failed!")))?;
 
+    let oai_client = OaiClient::new();
+
     let records = if let Ok(records) = fetch_records(&client, &url).await {
         records
     } else {
@@ -39,8 +42,19 @@ async fn main() -> Result<(), crate::Error> {
     for record in records {
         info!(
             "Inserting record: {:#?}",
-            record.generate_embedding_story().await?
+            record.generate_embedding_story()?
         );
+        let oai_request = CreateEmbeddingRequestArgs::default()
+            .model("text-embedding-3-small")
+            .input(record.generate_embedding_story()?)
+            .build()
+            .map_err(|_| Error::InternalError(String::from("Failed to build OpenAI request!")))?;
+
+        if env::var("GET_EMBEDDINGS").is_ok() {
+            let embed_resp = oai_client.embeddings().create(oai_request).await.unwrap();
+            info!("OpenAI embedding resp: {:#?}", embed_resp);
+        }
+
         match serialize_record(record, &pool).await {
             Ok(_) => {
                 inserted_count += 1;

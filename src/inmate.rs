@@ -1,6 +1,7 @@
 use log::{debug, error, info, trace, warn};
 
 use crate::utils::{cents_to_dollars, dollars_to_cents};
+use async_openai::{types::CreateEmbeddingRequestArgs, Client};
 use scraper::{Html, Selector};
 
 #[derive(Default)]
@@ -138,7 +139,7 @@ impl InmateProfile {
                             found_dts += 1;
                         }
                         "height:" => {
-                            self.height = (!dd_text.is_empty()).then(|| dd_text);
+                            self.height = (!dd_text.is_empty()).then(|| dd_text.replace("\\", ""));
                             found_dts += 1;
                         }
                         "weight:" => {
@@ -496,7 +497,16 @@ impl Record {
         })
     }
 
-    pub async fn generate_embedding_story(&self) -> Result<String, crate::Error> {
+    // TODO!
+    // pub async fn get_openai_embedding(&self, openai_client: async_openai::Client) {
+    //     let request = CreateEmbeddingRequestArgs::default
+    //         .model("text-embedding-3-small")
+    //         .input(self.generate_embedding_story())
+    //         .build()
+    //         .expect("Expect embedding request to build");
+    // }
+
+    pub fn generate_embedding_story(&self) -> Result<String, crate::Error> {
         let sex_description = match &self.profile.sex {
             Some(sex) => {
                 if sex.to_lowercase() == "male" {
@@ -574,7 +584,7 @@ impl Record {
             "{} {} {} {}",
             intro, charge_description, physical_description, id_description
         );
-        debug!("Generated story: {:#?}", story);
+        debug!("Generated story: {}", story);
 
         Ok(story)
     }
