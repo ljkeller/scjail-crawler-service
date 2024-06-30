@@ -4,25 +4,34 @@ use crate::utils::{cents_to_dollars, dollars_to_cents};
 use async_openai::{types::CreateEmbeddingRequestArgs, Client};
 use scraper::{Html, Selector};
 
-#[derive(Default)]
+// WARN: derived sqlx::FromRow will be missing some fields (alias, etc....) as all fields are not stored
+// in one table
+#[derive(Default, sqlx::FromRow)]
 pub struct InmateProfile {
     pub first_name: String,
     pub middle_name: Option<String>,
     pub last_name: String,
     pub affix: Option<String>,
+    #[sqlx(rename = "permanent_id")]
     pub perm_id: Option<String>,
     pub sex: Option<String>,
     pub dob: String,
+    #[sqlx(rename = "arresting_agency")]
     pub arrest_agency: Option<String>,
+    #[sqlx(rename = "booking_date")]
     pub booking_date_iso8601: String,
     pub booking_number: Option<String>,
     pub height: Option<String>,
     pub weight: Option<String>,
     pub race: Option<String>,
     pub eye_color: Option<String>,
+    #[sqlx(skip)]
     pub aliases: Option<Vec<String>>,
+    #[sqlx(skip)]
     pub img_blob: Option<Vec<u8>>,
+    #[sqlx(rename = "scil_sysid")]
     pub scil_sys_id: Option<String>,
+    #[sqlx(skip)]
     pub embedding: Option<Vec<f32>>,
 }
 
