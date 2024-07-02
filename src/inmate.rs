@@ -1,4 +1,5 @@
 use log::{debug, error, info, trace, warn};
+use sqlx::Row;
 
 use crate::utils::{cents_to_dollars, dollars_to_cents};
 use async_openai::{types::CreateEmbeddingRequestArgs, Client};
@@ -6,33 +7,56 @@ use scraper::{Html, Selector};
 
 // WARN: derived sqlx::FromRow will be missing some fields (alias, etc....) as all fields are not stored
 // in one table
-#[derive(Default, sqlx::FromRow)]
+#[derive(Default)]
 pub struct InmateProfile {
     pub first_name: String,
     pub middle_name: Option<String>,
     pub last_name: String,
     pub affix: Option<String>,
-    #[sqlx(rename = "permanent_id")]
     pub perm_id: Option<String>,
     pub sex: Option<String>,
     pub dob: String,
-    #[sqlx(rename = "arresting_agency")]
     pub arrest_agency: Option<String>,
-    #[sqlx(rename = "booking_date")]
     pub booking_date_iso8601: String,
     pub booking_number: Option<String>,
     pub height: Option<String>,
     pub weight: Option<String>,
     pub race: Option<String>,
     pub eye_color: Option<String>,
-    #[sqlx(skip)]
     pub aliases: Option<Vec<String>>,
-    #[sqlx(skip)]
     pub img_blob: Option<Vec<u8>>,
-    #[sqlx(rename = "scil_sysid")]
     pub scil_sys_id: Option<String>,
-    #[sqlx(skip)]
     pub embedding: Option<Vec<f32>>,
+}
+
+//WARN: remove the panicking? Only gonna run this script once or twice
+//TODO: Finish the decoding (replace the None types)
+
+impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for InmateProfile {
+    /// Create an InmateProfile from a SqliteRow, assuming the row has been joined several times to
+    /// aggregate all the necessary data.
+    fn from_row(row: &sqlx::sqlite::SqliteRow) -> Result<Self, sqlx::Error> {
+        Ok(InmateProfile {
+            first_name: row.get("first_name"),
+            middle_name: row.get("middle_name"),
+            last_name: row.get("last_name"),
+            affix: row.get("affix"),
+            perm_id: row.get("permanent_id"),
+            sex: row.get("sex"),
+            dob: row.get("dob"),
+            arrest_agency: row.get("arresting_agency"),
+            booking_date_iso8601: row.get("booking_date"),
+            booking_number: row.get("booking_number"),
+            height: row.get("height"),
+            weight: row.get("weight"),
+            race: row.get("race"),
+            eye_color: row.get("eye_color"),
+            aliases: Option::None,
+            img_blob: Option::None,
+            scil_sys_id: row.get("scil_sysid"),
+            embedding: Option::None,
+        })
+    }
 }
 
 impl InmateProfile {

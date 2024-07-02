@@ -26,6 +26,9 @@ async fn main() -> Result<(), Error> {
         "#,
         &mut conn).await?;
     Ok(())
+
+    // TODO: Goal is to build a record then call serialize_record
+    // Next, we'll swap the db out from dev to prod
 }
 
 async fn list_inmates(conn: &mut SqliteConnection) -> Result<(), Error> {
