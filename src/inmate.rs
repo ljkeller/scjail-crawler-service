@@ -55,7 +55,7 @@ impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for InmateProfile {
                 .get::<Option<String>, _>("aliases")
                 .map(|aliases: String| InmateProfile::get_aliases(&aliases))
                 .flatten(),
-            img_blob: Option::None,
+            img_blob: row.get("img"),
             scil_sys_id: row.get("scil_sysid"),
             embedding: Option::None,
         })
@@ -268,6 +268,14 @@ impl std::fmt::Debug for InmateProfile {
             .field("eye_color", &self.eye_color)
             .field("aliases", &self.aliases)
             .field("scil_sys_id", &self.scil_sys_id)
+            .field(
+                "img_blob",
+                if self.img_blob.is_some() {
+                    &"Some blob"
+                } else {
+                    &"None"
+                },
+            )
             .finish()
     }
 }
