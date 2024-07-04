@@ -1,7 +1,7 @@
 use sqlx::{Column, Connection, Row, SqliteConnection, TypeInfo};
 use std::env;
 
-use scjail_crawler_service::inmate::DbInmateProfile;
+use scjail_crawler_service::inmate::{Bond, BondInformation, ChargeInformation, DbInmateProfile};
 use scjail_crawler_service::Error;
 
 #[tokio::main]
@@ -13,13 +13,7 @@ async fn main() -> Result<(), Error> {
     )
     .await?;
 
-    dirty_print_query(r#"
-        select inmate.*, group_concat(alias) as aliases, img.img from inmate left join inmate_alias on inmate.id = inmate_alias.inmate_id left join img on inmate.id = img.inmate_id left join alias on inmate_alias.alias_id = alias.id group by inmate.id LIMIT 20;
-        "#,
-        &mut conn).await?;
-    println!("\n\n\nPack structs from query:");
-
-    query_inmate_profiles(&mut conn).await?;
+    let records = get_records_from_sqlite(&mut conn).await?;
 
     Ok(())
 
@@ -27,21 +21,56 @@ async fn main() -> Result<(), Error> {
     // Next, we'll swap the db out from dev to prod
 }
 
-/// Query to build a collection of InmateProfile structs.
-async fn query_inmate_profiles(conn: &mut SqliteConnection) -> Result<(), Error> {
-    //WARN: some inmate info is missing, as its not all available from one table
-    let inmates: Vec<DbInmateProfile> = sqlx::query_as(
-        r#"
-        select inmate.*, group_concat(alias) as aliases, img.img from inmate left join inmate_alias on inmate.id = inmate_alias.inmate_id left join img on inmate.id = img.inmate_id left join alias on inmate_alias.alias_id = alias.id group by inmate.id LIMIT 20;
-    "#)
-    .fetch_all(conn)
-    .await?;
+async fn get_records_from_sqlite(conn: &mut SqliteConnection) -> Result<(), Error> {
+    let profiles = get_inmate_profiles_sqlite(conn).await?;
 
-    for inmate in &inmates {
-        println!("{:?}", inmate);
+    for profile in &profiles {
+        let bond_info = get_inmate_bond_information_sqlite(conn, profile.id).await?;
+        for bond in bond_info.bonds {
+            println!("{:?}", bond);
+        }
     }
 
     Ok(())
+}
+
+/// Query to build a collection of InmateProfile structs.
+async fn get_inmate_profiles_sqlite(
+    conn: &mut SqliteConnection,
+) -> Result<Vec<DbInmateProfile>, Error> {
+    let profiles: Vec<DbInmateProfile> = sqlx::query_as(
+        r#"
+            SELECT inmate.*, group_concat(alias) as aliases, img.img 
+            FROM inmate
+            LEFT JOIN inmate_alias ON inmate.id = inmate_alias.inmate_id
+            LEFT JOIN img ON inmate.id = img.inmate_id
+            LEFT JOIN alias ON inmate_alias.alias_id = alias.id
+            GROUP BY inmate.id 
+            LIMIT 20;
+        "#,
+    )
+    .fetch_all(conn)
+    .await?;
+
+    Ok(profiles)
+}
+
+async fn get_inmate_bond_information_sqlite(
+    conn: &mut SqliteConnection,
+    inmate_id: i64,
+) -> Result<BondInformation, Error> {
+    let bonds: Vec<Bond> = sqlx::query_as(
+        r#"
+            SELECT *
+            FROM bond
+            WHERE inmate_id = $1 
+        "#,
+    )
+    .bind(inmate_id)
+    .fetch_all(&mut *conn)
+    .await?;
+
+    Ok(BondInformation { bonds })
 }
 
 /// Perform a query and print the resulting sql rows.

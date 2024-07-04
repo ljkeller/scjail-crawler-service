@@ -305,7 +305,7 @@ mod tests {
 
 #[derive(Debug)]
 pub struct DbInmateProfile {
-    id: i64,
+    pub id: i64,
     pub profile: InmateProfile,
 }
 
@@ -323,9 +323,9 @@ impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for DbInmateProfile {
     /// Create an InmateProfile from a SqliteRow, assuming the row has been joined several times to
     /// aggregate all the necessary data.
     fn from_row(row: &sqlx::sqlite::SqliteRow) -> Result<Self, sqlx::Error> {
-        Ok(DbInmateProfile::new(
-            row.get("id"),
-            InmateProfile {
+        Ok(DbInmateProfile {
+            id: row.get("id"),
+            profile: InmateProfile {
                 first_name: row.get("first_name"),
                 middle_name: row.get("middle_name"),
                 last_name: row.get("last_name"),
@@ -348,14 +348,23 @@ impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for DbInmateProfile {
                 scil_sys_id: row.get("scil_sysid"),
                 embedding: Option::None,
             },
-        ))
+        })
     }
 }
 
-#[derive(Debug, sqlx::FromRow)]
+#[derive(Debug)]
 pub struct Bond {
     pub bond_type: String,
     pub bond_amount: u64,
+}
+
+impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for Bond {
+    fn from_row(row: &sqlx::sqlite::SqliteRow) -> Result<Self, sqlx::Error> {
+        Ok(Bond {
+            bond_type: row.get("type"),
+            bond_amount: row.get::<i64, &str>("amount_pennies") as u64,
+        })
+    }
 }
 
 #[derive(Debug)]
