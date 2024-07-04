@@ -51,7 +51,10 @@ impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for InmateProfile {
             weight: row.get("weight"),
             race: row.get("race"),
             eye_color: row.get("eye_color"),
-            aliases: Option::None,
+            aliases: row
+                .get::<Option<String>, _>("aliases")
+                .map(|aliases: String| InmateProfile::get_aliases(&aliases))
+                .flatten(),
             img_blob: Option::None,
             scil_sys_id: row.get("scil_sysid"),
             embedding: Option::None,
