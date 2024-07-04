@@ -352,7 +352,7 @@ impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for DbInmateProfile {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, sqlx::FromRow)]
 pub struct Bond {
     pub bond_type: String,
     pub bond_amount: u64,
