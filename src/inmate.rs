@@ -5,8 +5,6 @@ use crate::utils::{cents_to_dollars, dollars_to_cents};
 use async_openai::{types::CreateEmbeddingRequestArgs, Client};
 use scraper::{Html, Selector};
 
-// WARN: derived sqlx::FromRow will be missing some fields (alias, etc....) as all fields are not stored
-// in one table
 #[derive(Default)]
 pub struct InmateProfile {
     pub first_name: String,
@@ -27,39 +25,6 @@ pub struct InmateProfile {
     pub img_blob: Option<Vec<u8>>,
     pub scil_sys_id: Option<String>,
     pub embedding: Option<Vec<f32>>,
-}
-
-//WARN: remove the panicking? Only gonna run this script once or twice
-//TODO: Finish the decoding (replace the None types)
-
-impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for InmateProfile {
-    /// Create an InmateProfile from a SqliteRow, assuming the row has been joined several times to
-    /// aggregate all the necessary data.
-    fn from_row(row: &sqlx::sqlite::SqliteRow) -> Result<Self, sqlx::Error> {
-        Ok(InmateProfile {
-            first_name: row.get("first_name"),
-            middle_name: row.get("middle_name"),
-            last_name: row.get("last_name"),
-            affix: row.get("affix"),
-            perm_id: row.get("permanent_id"),
-            sex: row.get("sex"),
-            dob: row.get("dob"),
-            arrest_agency: row.get("arresting_agency"),
-            booking_date_iso8601: row.get("booking_date"),
-            booking_number: row.get("booking_number"),
-            height: row.get("height"),
-            weight: row.get("weight"),
-            race: row.get("race"),
-            eye_color: row.get("eye_color"),
-            aliases: row
-                .get::<Option<String>, _>("aliases")
-                .map(|aliases: String| InmateProfile::get_aliases(&aliases))
-                .flatten(),
-            img_blob: row.get("img"),
-            scil_sys_id: row.get("scil_sysid"),
-            embedding: Option::None,
-        })
-    }
 }
 
 impl InmateProfile {
@@ -271,7 +236,7 @@ impl std::fmt::Debug for InmateProfile {
             .field(
                 "img_blob",
                 if self.img_blob.is_some() {
-                    &"Some blob"
+                    &"<some blob>"
                 } else {
                     &"None"
                 },
@@ -335,6 +300,55 @@ mod tests {
         assert_eq!(InmateProfile::get_aliases(aliases), None);
         let aliases = " , ";
         assert_eq!(InmateProfile::get_aliases(aliases), None);
+    }
+}
+
+#[derive(Debug)]
+pub struct DbInmateProfile {
+    id: i64,
+    pub profile: InmateProfile,
+}
+
+impl DbInmateProfile {
+    pub fn new(id: i64, inmate_profile: InmateProfile) -> DbInmateProfile {
+        DbInmateProfile {
+            id,
+            profile: inmate_profile,
+        }
+    }
+}
+
+//WARN: remove the panicking? Only gonna run this script once or twice
+impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for DbInmateProfile {
+    /// Create an InmateProfile from a SqliteRow, assuming the row has been joined several times to
+    /// aggregate all the necessary data.
+    fn from_row(row: &sqlx::sqlite::SqliteRow) -> Result<Self, sqlx::Error> {
+        Ok(DbInmateProfile::new(
+            row.get("id"),
+            InmateProfile {
+                first_name: row.get("first_name"),
+                middle_name: row.get("middle_name"),
+                last_name: row.get("last_name"),
+                affix: row.get("affix"),
+                perm_id: row.get("permanent_id"),
+                sex: row.get("sex"),
+                dob: row.get("dob"),
+                arrest_agency: row.get("arresting_agency"),
+                booking_date_iso8601: row.get("booking_date"),
+                booking_number: row.get("booking_number"),
+                height: row.get("height"),
+                weight: row.get("weight"),
+                race: row.get("race"),
+                eye_color: row.get("eye_color"),
+                aliases: row
+                    .get::<Option<String>, _>("aliases")
+                    .map(|aliases: String| InmateProfile::get_aliases(&aliases))
+                    .flatten(),
+                img_blob: row.get("img"),
+                scil_sys_id: row.get("scil_sysid"),
+                embedding: Option::None,
+            },
+        ))
     }
 }
 
@@ -436,6 +450,16 @@ pub struct Charge {
     pub description: String,
     pub grade: ChargeGrade,
     pub offense_date: String,
+}
+
+impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for Charge {
+    fn from_row(row: &sqlx::sqlite::SqliteRow) -> Result<Self, sqlx::Error> {
+        Ok(Charge {
+            description: row.get("description"),
+            grade: ChargeGrade::from_string(row.get("grade")),
+            offense_date: row.get("offense_date"),
+        })
+    }
 }
 
 #[derive(Debug)]

@@ -1,7 +1,7 @@
 use sqlx::{Column, Connection, Row, SqliteConnection, TypeInfo};
 use std::env;
 
-use scjail_crawler_service::inmate::InmateProfile;
+use scjail_crawler_service::inmate::DbInmateProfile;
 use scjail_crawler_service::Error;
 
 #[tokio::main]
@@ -30,7 +30,7 @@ async fn main() -> Result<(), Error> {
 /// Query to build a collection of InmateProfile structs.
 async fn query_inmate_profiles(conn: &mut SqliteConnection) -> Result<(), Error> {
     //WARN: some inmate info is missing, as its not all available from one table
-    let inmates: Vec<InmateProfile> = sqlx::query_as(
+    let inmates: Vec<DbInmateProfile> = sqlx::query_as(
         r#"
         select inmate.*, group_concat(alias) as aliases, img.img from inmate left join inmate_alias on inmate.id = inmate_alias.inmate_id left join img on inmate.id = img.inmate_id left join alias on inmate_alias.alias_id = alias.id group by inmate.id LIMIT 20;
     "#)
