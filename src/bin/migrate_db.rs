@@ -1,7 +1,9 @@
 use sqlx::{Column, Connection, Row, SqliteConnection, TypeInfo};
 use std::env;
 
-use scjail_crawler_service::inmate::{Bond, BondInformation, ChargeInformation, DbInmateProfile};
+use scjail_crawler_service::inmate::{
+    Bond, BondInformation, Charge, ChargeInformation, DbInmateProfile, Record,
+};
 use scjail_crawler_service::Error;
 
 #[tokio::main]
@@ -23,14 +25,24 @@ async fn main() -> Result<(), Error> {
 
 async fn get_records_from_sqlite(conn: &mut SqliteConnection) -> Result<(), Error> {
     let profiles = get_inmate_profiles_sqlite(conn).await?;
+    let mut records = Vec::new();
 
-    for profile in &profiles {
+    for profile in profiles {
         let bond_info = get_inmate_bond_information_sqlite(conn, profile.id).await?;
-        for bond in bond_info.bonds {
-            println!("{:?}", bond);
-        }
+        let charge_info = get_inmate_charge_information_sqlite(conn, profile.id).await?;
+        records.push(Record {
+            url: String::from(""),
+            profile: profile.profile,
+            bond: bond_info,
+            charges: charge_info,
+        })
     }
 
+    records.iter().for_each(|record| {
+        println!("<{:?}>\n", record);
+    });
+
+    println!("Number of records: {}", records.len());
     Ok(())
 }
 
@@ -46,7 +58,6 @@ async fn get_inmate_profiles_sqlite(
             LEFT JOIN img ON inmate.id = img.inmate_id
             LEFT JOIN alias ON inmate_alias.alias_id = alias.id
             GROUP BY inmate.id 
-            LIMIT 20;
         "#,
     )
     .fetch_all(conn)
@@ -61,16 +72,34 @@ async fn get_inmate_bond_information_sqlite(
 ) -> Result<BondInformation, Error> {
     let bonds: Vec<Bond> = sqlx::query_as(
         r#"
-            SELECT *
+            SELECT type, amount_pennies
             FROM bond
             WHERE inmate_id = $1 
         "#,
     )
     .bind(inmate_id)
-    .fetch_all(&mut *conn)
+    .fetch_all(conn)
     .await?;
 
     Ok(BondInformation { bonds })
+}
+
+async fn get_inmate_charge_information_sqlite(
+    conn: &mut SqliteConnection,
+    inmate_id: i64,
+) -> Result<ChargeInformation, Error> {
+    let charges: Vec<Charge> = sqlx::query_as(
+        r#"
+            SELECT description, grade, offense_date
+            FROM charge
+            WHERE inmate_id = $1 
+        "#,
+    )
+    .bind(inmate_id)
+    .fetch_all(conn)
+    .await?;
+
+    Ok(ChargeInformation { charges })
 }
 
 /// Perform a query and print the resulting sql rows.
