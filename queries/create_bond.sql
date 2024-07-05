@@ -6,4 +6,6 @@ CREATE TABLE IF NOT EXISTS bond (
   type TEXT NOT NULL,
   amount_pennies INTEGER NOT NULL DEFAULT 0,
   FOREIGN KEY (inmate_id) REFERENCES inmate(id) 
-)
+);
+
+CREATE INDEX bond_inmate_id_idx ON bond(inmate_id);

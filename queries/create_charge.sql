@@ -7,4 +7,6 @@ CREATE TABLE IF NOT EXISTS charge (
   grade TEXT,
   offense_date TEXT,
   FOREIGN KEY (inmate_id) REFERENCES inmate(id)
-)
+);
+
+CREATE INDEX idx_inmate_id ON charge(inmate_id);

@@ -1,5 +1,5 @@
 -- Table: public.inmate
-
+CREATE EXTENSION vector;
 CREATE TABLE IF NOT EXISTS inmate (
   id SERIAL PRIMARY KEY,
   first_name TEXT NOT NULL CHECK (first_name <> ''),
@@ -20,5 +20,9 @@ CREATE TABLE IF NOT EXISTS inmate (
   scil_sysid TEXT,
   record_visits INTEGER DEFAULT 0,
   shared INTEGER DEFAULT 0,
+  embedding vector(1536),
   UNIQUE (first_name, last_name, dob, booking_date)
-)
+);
+CREATE INDEX idx_inmate_first_name ON inmate(first_name);
+CREATE INDEX idx_inmate_middle_name ON inmate(middle_name);
+CREATE INDEX idx_inmate_last_name ON inmate(last_name);

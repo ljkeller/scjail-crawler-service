@@ -6,4 +6,4 @@ CREATE TABLE IF NOT EXISTS inmate_alias (
   FOREIGN KEY (inmate_id) REFERENCES inmate(id),
   FOREIGN KEY (alias_id) REFERENCES alias(id),
   PRIMARY KEY (inmate_id, alias_id)
-)
+);

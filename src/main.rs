@@ -25,7 +25,7 @@ async fn main() -> Result<(), crate::Error> {
 
     let oai_client = OaiClient::new();
 
-    let records = if let Ok(records) = fetch_records(&client, &url).await {
+    let mut records = if let Ok(records) = fetch_records(&client, &url).await {
         records
     } else {
         return Err(Error::InternalError(String::from(
@@ -39,13 +39,14 @@ async fn main() -> Result<(), crate::Error> {
     create_dbs(&pool).await?;
 
     let (mut inserted_count, mut failed_count) = (0, 0);
-    for record in records {
+
+    for mut record in records {
         info!(
             "Inserting record: {:#?}",
             record.generate_embedding_story()?
         );
         let oai_request = CreateEmbeddingRequestArgs::default()
-            .model("text-embedding-3-small")
+            .model("text-embedding-3-small") //text-embedding-3-small defaults to 1536 dimensions
             .input(record.generate_embedding_story()?)
             .build()
             .map_err(|_| Error::InternalError(String::from("Failed to build OpenAI request!")))?;
@@ -53,6 +54,19 @@ async fn main() -> Result<(), crate::Error> {
         if env::var("GET_EMBEDDINGS").is_ok() {
             let embed_resp = oai_client.embeddings().create(oai_request).await.unwrap();
             info!("OpenAI embedding resp: {:#?}", embed_resp);
+
+            // Since we are only sending one input per request, we can assume the first embedding
+            // is the one we want
+            record.profile.embedding = match embed_resp.data.first() {
+                Some(embedding) => Some(embedding.embedding.clone()),
+                None => {
+                    warn!(
+                        "No embeddings found in response: {:#?}. Still serializing",
+                        embed_resp
+                    );
+                    None
+                }
+            };
         }
 
         match serialize_record(record, &pool).await {
