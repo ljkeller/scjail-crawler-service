@@ -1,3 +1,5 @@
+use async_openai::config::{Config, OpenAIConfig};
+use async_openai::Client;
 use log::{info, trace};
 use sqlx::postgres::PgPool;
 use sqlx::Row;
@@ -142,6 +144,30 @@ pub async fn inmate_count(pool: &PgPool) -> Result<i64, Error> {
     Ok(res
         .count
         .expect("Expect count to be present on on inmate count query"))
+}
+
+pub async fn serialize_records<Record, I, C>(
+    records: I,
+    pool: &PgPool,
+    oai_client: &Option<Client<OpenAIConfig>>,
+) -> Result<(), Error>
+where
+    I: IntoIterator<Item = Record>,
+    C: Config,
+{
+    todo!();
+
+    Ok(())
+}
+
+pub async fn serialize_record_with_oai<C: Config>(
+    record: Record,
+    pool: &PgPool,
+    client: Client<C>,
+) -> Result<i32, Error> {
+    todo!();
+
+    serialize_record(record, pool).await
 }
 
 pub async fn serialize_record(record: Record, pool: &PgPool) -> Result<i32, Error> {

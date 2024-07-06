@@ -1,31 +1,52 @@
-use sqlx::{Column, Connection, Row, SqliteConnection, TypeInfo};
+use async_openai::{config::OpenAIConfig, Client as OaiClient};
+use sqlx::{postgres::PgPoolOptions, Column, Connection, Row, SqliteConnection, TypeInfo};
+
 use std::env;
 
-use scjail_crawler_service::inmate::{
-    Bond, BondInformation, Charge, ChargeInformation, DbInmateProfile, Record,
+use scjail_crawler_service::{
+    inmate::{Bond, BondInformation, Charge, ChargeInformation, DbInmateProfile, Record},
+    serialize::serialize_records,
+    Error,
 };
-use scjail_crawler_service::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     println!("This file will be used to migrate sqlite to postgres.");
 
-    let mut conn = SqliteConnection::connect(
+    let mut sqlite_conn = SqliteConnection::connect(
         &env::var("SQLITE_DATABASE").expect("env variable SQLITE_DATABASE must be set"),
     )
     .await?;
 
-    let records = get_records_from_sqlite(&mut conn).await?;
+    let mut pg_pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(
+            &env::var("POSTGRES_DATABASE").expect("env variable POSTGRES_DATABASE must be set"),
+        )
+        .await?;
+
+    let records: Vec<Record> = get_records_from_sqlite(&mut sqlite_conn).await?;
+
+    let oai_client = if let Ok(_) = env::var("OPENAI_API_KEY") {
+        Some(OaiClient::new())
+    } else {
+        None
+    };
+
+    match serialize_records::<_, _, OpenAIConfig>(&records, &pg_pool, &oai_client).await {
+        Err(e) => println!("Failed to serialize records: {:?}", e),
+        _ => println!("Successfully serialized records!"),
+    }
 
     Ok(())
-
-    // TODO: Goal is to build a record then call serialize_record
-    // Next, we'll swap the db out from dev to prod
 }
 
-async fn get_records_from_sqlite(conn: &mut SqliteConnection) -> Result<(), Error> {
+async fn get_records_from_sqlite<R>(conn: &mut SqliteConnection) -> Result<R, Error>
+where
+    R: FromIterator<Record>,
+{
     let profiles = get_inmate_profiles_sqlite(conn).await?;
-    let mut records = Vec::new();
+    let mut records: Vec<Record> = Vec::new();
 
     for profile in profiles {
         let bond_info = get_inmate_bond_information_sqlite(conn, profile.id).await?;
@@ -41,9 +62,9 @@ async fn get_records_from_sqlite(conn: &mut SqliteConnection) -> Result<(), Erro
     records.iter().for_each(|record| {
         println!("<{:?}>\n", record);
     });
-
     println!("Number of records: {}", records.len());
-    Ok(())
+
+    Ok(records.into_iter().collect())
 }
 
 /// Query to build a collection of InmateProfile structs.
@@ -58,6 +79,8 @@ async fn get_inmate_profiles_sqlite(
             LEFT JOIN img ON inmate.id = img.inmate_id
             LEFT JOIN alias ON inmate_alias.alias_id = alias.id
             GROUP BY inmate.id 
+            ORDER BY inmate.id DESC
+            LIMIT 300
         "#,
     )
     .fetch_all(conn)
