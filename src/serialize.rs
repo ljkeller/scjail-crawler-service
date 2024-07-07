@@ -1,6 +1,6 @@
 use async_openai::config::{Config, OpenAIConfig};
 use async_openai::Client;
-use log::{info, trace, warn};
+use log::{debug, info, trace, warn};
 use sqlx::postgres::PgPool;
 use sqlx::Row;
 
@@ -8,6 +8,7 @@ use crate::inmate::{Bond, Charge, InmateProfile, Record};
 use crate::Error;
 
 pub async fn create_dbs(pool: &PgPool) -> Result<(), Error> {
+    info!("Creating databases if not already existing...");
     create_inmate(pool).await?;
     create_alias(pool).await?;
     create_bond(pool).await?;
@@ -15,6 +16,7 @@ pub async fn create_dbs(pool: &PgPool) -> Result<(), Error> {
     create_img(pool).await?;
     create_inmate_alias(pool).await?;
 
+    info!("Databases created successfully!");
     Ok(())
 }
 
@@ -23,6 +25,7 @@ async fn run_sql_batch(
     statements: &Vec<&str>,
 ) -> Result<(), Error> {
     for statement in statements {
+        debug!("Running statement: {}", statement);
         sqlx::query(statement).execute(pool).await.expect(&format!(
             "Expect run sql batch statements. Failed on statement: {}",
             statement
@@ -155,17 +158,18 @@ where
     I: IntoIterator<Item = crate::inmate::Record>,
     C: Config,
 {
-    todo!();
-
+    info!("Serializing records...");
     let (mut inserted_count, mut failed_count) = (0, 0);
-    for mut record in records {
-        info!(
+    for (idx, mut record) in records.into_iter().enumerate() {
+        trace!(
             "Inserting record: {:#?}",
             record.generate_embedding_story()?
         );
 
         if record.profile.embedding.is_none() && oai_client.is_some() {
-            record.gather_openai_embedding(&oai_client.unwrap()).await;
+            record
+                .gather_openai_embedding(oai_client.as_ref().unwrap())
+                .await;
         }
 
         match serialize_record(record, pool).await {
@@ -176,6 +180,10 @@ where
                 warn!("Failed to serialize record {:#?}", e);
                 failed_count += 1;
             }
+        }
+
+        if idx % 25 == 0 {
+            info!("Processed {} records", idx);
         }
     }
 
@@ -190,6 +198,7 @@ where
 }
 
 pub async fn serialize_record(record: Record, pool: &PgPool) -> Result<i32, Error> {
+    trace!("Serializing record: {:#?}", record);
     let mut transaction = pool.begin().await?;
     let inmate_info = record.profile.get_core_attributes();
     let inmate_id = serialize_profile(record.profile, &mut transaction).await?;
@@ -205,7 +214,7 @@ pub async fn serialize_record(record: Record, pool: &PgPool) -> Result<i32, Erro
     // Commit transaction, otherwise implicity rollback on out of scope
     transaction.commit().await?;
 
-    info!(
+    debug!(
         "Successfully serialized {} yielding inmate_id: {}.",
         inmate_info, inmate_id
     );
@@ -334,6 +343,11 @@ async fn serialize_profile(
         .try_get::<i32, _>("id")
         .expect("Expect inmate id to be present in profile serialization.");
 
+    debug!(
+        "Basic inmate data serialized to inmate table. Inmate ID: {}",
+        inmate_id
+    );
+
     // TODO: error handle failures on profile serialization that can be ignored? Letting
     // core profile data pass and ignoring the rest?
     for alias in profile.aliases.into_iter().flatten() {
@@ -356,6 +370,7 @@ async fn serialize_profile(
         .execute(&mut **transaction)
         .await?;
     }
+    debug!("Aliases serialized");
 
     sqlx::query!(
         r#"
@@ -369,6 +384,7 @@ async fn serialize_profile(
     )
     .execute(&mut **transaction)
     .await?;
+    debug!("Image serialized");
 
     Ok(inmate_id)
 }

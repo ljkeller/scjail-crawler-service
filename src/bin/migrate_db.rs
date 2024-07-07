@@ -1,17 +1,19 @@
 use async_openai::{config::OpenAIConfig, Client as OaiClient};
+use log::{error, info, trace, warn};
 use sqlx::{postgres::PgPoolOptions, Column, Connection, Row, SqliteConnection, TypeInfo};
 
 use std::env;
 
 use scjail_crawler_service::{
     inmate::{Bond, BondInformation, Charge, ChargeInformation, DbInmateProfile, Record},
-    serialize::serialize_records,
+    serialize::{create_dbs, serialize_records},
     Error,
 };
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    println!("This file will be used to migrate sqlite to postgres.");
+    pretty_env_logger::init();
+    info!("Migrating SQLite database to Postgres...");
 
     let mut sqlite_conn = SqliteConnection::connect(
         &env::var("SQLITE_DATABASE").expect("env variable SQLITE_DATABASE must be set"),
@@ -24,18 +26,22 @@ async fn main() -> Result<(), Error> {
             &env::var("POSTGRES_DATABASE").expect("env variable POSTGRES_DATABASE must be set"),
         )
         .await?;
+    let create_req = create_dbs(&pg_pool);
 
     let records: Vec<Record> = get_records_from_sqlite(&mut sqlite_conn).await?;
 
     let oai_client = if let Ok(_) = env::var("OPENAI_API_KEY") {
+        trace!("OpenAI API key found, initializing client...");
         Some(OaiClient::new())
     } else {
+        warn!("No OpenAI API key found, skipping embedding logic...");
         None
     };
 
+    create_req.await?;
     match serialize_records::<_, OpenAIConfig>(records, &pg_pool, &oai_client).await {
-        Err(e) => println!("Failed to serialize records: {:?}", e),
-        _ => println!("Successfully serialized records!"),
+        Err(e) => error!("Failed to serialize records: {:?}", e),
+        _ => info!("Successfully serialized records!"),
     }
 
     Ok(())
@@ -60,9 +66,9 @@ where
     }
 
     records.iter().for_each(|record| {
-        println!("<{:?}>\n", record);
+        trace!("<{:?}>\n", record);
     });
-    println!("Number of records: {}", records.len());
+    info!("Number of records: {}", records.len());
 
     Ok(records.into_iter().collect())
 }
@@ -71,8 +77,8 @@ where
 async fn get_inmate_profiles_sqlite(
     conn: &mut SqliteConnection,
 ) -> Result<Vec<DbInmateProfile>, Error> {
-    let profiles: Vec<DbInmateProfile> = sqlx::query_as(
-        r#"
+    //TODO! Remove limit
+    let query = r#"
             SELECT inmate.*, group_concat(alias) as aliases, img.img 
             FROM inmate
             LEFT JOIN inmate_alias ON inmate.id = inmate_alias.inmate_id
@@ -81,10 +87,9 @@ async fn get_inmate_profiles_sqlite(
             GROUP BY inmate.id 
             ORDER BY inmate.id DESC
             LIMIT 300
-        "#,
-    )
-    .fetch_all(conn)
-    .await?;
+        "#;
+    trace!("Get inmate profile Query: {}", query);
+    let profiles: Vec<DbInmateProfile> = sqlx::query_as(query).fetch_all(conn).await?;
 
     Ok(profiles)
 }
@@ -93,16 +98,16 @@ async fn get_inmate_bond_information_sqlite(
     conn: &mut SqliteConnection,
     inmate_id: i64,
 ) -> Result<BondInformation, Error> {
-    let bonds: Vec<Bond> = sqlx::query_as(
-        r#"
+    let query = r#"
             SELECT type, amount_pennies
             FROM bond
             WHERE inmate_id = $1 
-        "#,
-    )
-    .bind(inmate_id)
-    .fetch_all(conn)
-    .await?;
+        "#;
+    trace!("Get inmate bond information Query: {}", query);
+    let bonds: Vec<Bond> = sqlx::query_as(query)
+        .bind(inmate_id)
+        .fetch_all(conn)
+        .await?;
 
     Ok(BondInformation { bonds })
 }
@@ -111,23 +116,23 @@ async fn get_inmate_charge_information_sqlite(
     conn: &mut SqliteConnection,
     inmate_id: i64,
 ) -> Result<ChargeInformation, Error> {
-    let charges: Vec<Charge> = sqlx::query_as(
-        r#"
+    let query = r#"
             SELECT description, grade, offense_date
             FROM charge
             WHERE inmate_id = $1 
-        "#,
-    )
-    .bind(inmate_id)
-    .fetch_all(conn)
-    .await?;
+        "#;
+    trace!("Get inmate charge information Query: {}", query);
+    let charges: Vec<Charge> = sqlx::query_as(query)
+        .bind(inmate_id)
+        .fetch_all(conn)
+        .await?;
 
     Ok(ChargeInformation { charges })
 }
 
 /// Perform a query and print the resulting sql rows.
 async fn dirty_print_query(query: &str, conn: &mut SqliteConnection) -> Result<(), Error> {
-    println!("Query: {}", query);
+    info!("Query: {}", query);
     let rows = sqlx::query(query).fetch_all(conn).await?;
     for row in rows {
         dirty_print_row(&row).await;

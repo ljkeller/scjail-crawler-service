@@ -574,12 +574,14 @@ impl Record {
         })
     }
 
-    pub async fn gather_openai_embedding<C>(&mut self, openai_client: &async_openai::Client<C>)
+    pub async fn gather_openai_embedding<C>(
+        &mut self,
+        openai_client: &async_openai::Client<C>,
+    ) -> Result<(), crate::Error>
     where
         C: Config,
     {
-        todo!()
-
+        trace!("Gathering OpenAI embedding for record: {:#?}.", self);
         let request = CreateEmbeddingRequestArgs::default()
             .model("text-embedding-3-small")
             .input(
@@ -587,7 +589,34 @@ impl Record {
                     .expect("Failed to generate story"),
             )
             .build()
-            .expect("Expect embedding request to build");
+            .map_err(|_| {
+                crate::Error::InternalError(String::from("Failed to build OpenAI request!"))
+            })?;
+
+        let embed_resp = openai_client
+            .embeddings()
+            .create(request)
+            .await
+            .map_err(|_| {
+                crate::Error::InternalError(format!(
+                    "Failed to get OpenAI embeddings for record: {:#?}",
+                    self
+                ))
+            })?;
+
+        debug!("OpenAI embedding resp: {:#?}", embed_resp);
+        self.profile.embedding = match embed_resp.data.first() {
+            Some(embedding_handle) => Some(embedding_handle.embedding.clone()),
+            None => {
+                warn!(
+                    "No embeddings found in Open AI response: {:#?}. Still serializing",
+                    embed_resp
+                );
+                None
+            }
+        };
+
+        Ok(())
     }
 
     pub fn generate_embedding_story(&self) -> Result<String, crate::Error> {
