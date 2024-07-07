@@ -2,7 +2,7 @@ use log::{debug, error, info, trace, warn};
 use sqlx::Row;
 
 use crate::utils::{cents_to_dollars, dollars_to_cents};
-use async_openai::{types::CreateEmbeddingRequestArgs, Client};
+use async_openai::{config::Config, types::CreateEmbeddingRequestArgs, Client};
 use scraper::{Html, Selector};
 
 #[derive(Default)]
@@ -574,14 +574,21 @@ impl Record {
         })
     }
 
-    // TODO!
-    // pub async fn get_openai_embedding(&self, openai_client: async_openai::Client) {
-    //     let request = CreateEmbeddingRequestArgs::default
-    //         .model("text-embedding-3-small")
-    //         .input(self.generate_embedding_story())
-    //         .build()
-    //         .expect("Expect embedding request to build");
-    // }
+    pub async fn gather_openai_embedding<C>(&mut self, openai_client: &async_openai::Client<C>)
+    where
+        C: Config,
+    {
+        todo!()
+
+        let request = CreateEmbeddingRequestArgs::default()
+            .model("text-embedding-3-small")
+            .input(
+                self.generate_embedding_story()
+                    .expect("Failed to generate story"),
+            )
+            .build()
+            .expect("Expect embedding request to build");
+    }
 
     pub fn generate_embedding_story(&self) -> Result<String, crate::Error> {
         let sex_description = match &self.profile.sex {

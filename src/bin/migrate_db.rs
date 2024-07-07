@@ -33,7 +33,7 @@ async fn main() -> Result<(), Error> {
         None
     };
 
-    match serialize_records::<_, _, OpenAIConfig>(&records, &pg_pool, &oai_client).await {
+    match serialize_records::<_, OpenAIConfig>(records, &pg_pool, &oai_client).await {
         Err(e) => println!("Failed to serialize records: {:?}", e),
         _ => println!("Successfully serialized records!"),
     }
