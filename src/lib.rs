@@ -1,5 +1,6 @@
 pub mod error;
 pub mod inmate;
+pub mod s3_utils;
 pub mod serialize;
 mod utils;
 

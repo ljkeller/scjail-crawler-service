@@ -13,6 +13,8 @@ pub enum Error {
     InternalError(String),
     /// Error related to PostgreSQL, with additional explanation
     PostgresError(String),
+    /// Error related to AWS S3, with additional explanation
+    S3Error(String),
 }
 
 impl std::error::Error for Error {}
@@ -28,6 +30,7 @@ impl std::fmt::Display for Error {
             Error::PostgresError(explanation) => {
                 write!(f, "Internal Postgres error: {}", explanation)
             }
+            Error::S3Error(explanation) => write!(f, "S3 error: {}", explanation),
         }
     }
 }
@@ -35,5 +38,26 @@ impl std::fmt::Display for Error {
 impl From<sqlx::Error> for Error {
     fn from(e: sqlx::Error) -> Self {
         Error::PostgresError(format!("Postgres error {}", e))
+    }
+}
+
+impl From<aws_sdk_s3::Error> for Error {
+    fn from(e: aws_sdk_s3::Error) -> Self {
+        Error::S3Error(format!("aws_sdk_3 error: {}", e))
+    }
+}
+
+impl From<aws_sdk_s3::error::BuildError> for Error {
+    fn from(e: aws_sdk_s3::error::BuildError) -> Self {
+        Error::S3Error(format!("aws_smithy_types BuildError: {}", e))
+    }
+}
+
+impl<T> From<aws_sdk_s3::error::SdkError<T>> for Error
+where
+    T: std::error::Error + Send + Sync + 'static,
+{
+    fn from(e: aws_sdk_s3::error::SdkError<T>) -> Self {
+        Error::S3Error(format!("aws_sdk_3 SdkError: {}", e))
     }
 }
