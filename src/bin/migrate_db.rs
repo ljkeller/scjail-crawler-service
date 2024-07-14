@@ -20,7 +20,7 @@ async fn main() -> Result<(), Error> {
     )
     .await?;
 
-    let mut pg_pool = PgPoolOptions::new()
+    let pg_pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(
             &env::var("POSTGRES_DATABASE").expect("env variable POSTGRES_DATABASE must be set"),
@@ -77,7 +77,6 @@ where
 async fn get_inmate_profiles_sqlite(
     conn: &mut SqliteConnection,
 ) -> Result<Vec<DbInmateProfile>, Error> {
-    //TODO! Remove limit
     let query = r#"
             SELECT inmate.*, group_concat(alias) as aliases, img.img 
             FROM inmate
@@ -86,7 +85,6 @@ async fn get_inmate_profiles_sqlite(
             LEFT JOIN alias ON inmate_alias.alias_id = alias.id
             GROUP BY inmate.id 
             ORDER BY inmate.id DESC
-            LIMIT 300
         "#;
     trace!("Get inmate profile Query: {}", query);
     let profiles: Vec<DbInmateProfile> = sqlx::query_as(query).fetch_all(conn).await?;
@@ -131,6 +129,7 @@ async fn get_inmate_charge_information_sqlite(
 }
 
 /// Perform a query and print the resulting sql rows.
+#[allow(dead_code)]
 async fn dirty_print_query(query: &str, conn: &mut SqliteConnection) -> Result<(), Error> {
     info!("Query: {}", query);
     let rows = sqlx::query(query).fetch_all(conn).await?;
@@ -142,6 +141,7 @@ async fn dirty_print_query(query: &str, conn: &mut SqliteConnection) -> Result<(
 }
 
 /// Print a SqliteRow, assuming its cols can be decoded as a string.
+#[allow(dead_code)]
 async fn dirty_print_row(row: &sqlx::sqlite::SqliteRow) {
     print!("<");
     for col_idx in 0..row.len() {

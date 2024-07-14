@@ -167,9 +167,15 @@ where
         );
 
         if record.profile.embedding.is_none() && oai_client.is_some() {
-            record
+            if let Err(e) = record
                 .gather_openai_embedding(oai_client.as_ref().unwrap())
-                .await;
+                .await
+            {
+                warn!(
+                    "Failed to gather OpenAI embedding: {:#?}. Continuing serialize.",
+                    e
+                );
+            }
         }
 
         match serialize_record(record, pool).await {

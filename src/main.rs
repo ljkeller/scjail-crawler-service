@@ -25,7 +25,7 @@ async fn main() -> Result<(), crate::Error> {
 
     let oai_client = OaiClient::new();
 
-    let mut records = if let Ok(records) = fetch_records(&client, &url).await {
+    let records = if let Ok(records) = fetch_records(&client, &url).await {
         records
     } else {
         return Err(Error::InternalError(String::from(

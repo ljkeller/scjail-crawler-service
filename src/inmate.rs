@@ -1,8 +1,11 @@
 use log::{debug, error, info, trace, warn};
 use sqlx::Row;
 
-use crate::utils::{cents_to_dollars, dollars_to_cents};
-use async_openai::{config::Config, types::CreateEmbeddingRequestArgs, Client};
+use crate::{
+    utils::{cents_to_dollars, dollars_to_cents},
+    Error,
+};
+use async_openai::{config::Config, types::CreateEmbeddingRequestArgs};
 use scraper::{Html, Selector};
 
 #[derive(Default)]
@@ -32,12 +35,12 @@ impl InmateProfile {
         html: &Html,
         sys_id: &str,
         client: &reqwest::Client,
-    ) -> Result<InmateProfile, crate::Error> {
+    ) -> Result<InmateProfile, Error> {
         trace!("Building InmateProfile from HTML: {:#?}", html);
 
         // fire off img download request before parsing HTML
         tokio::time::sleep(std::time::Duration::from_millis(75)).await;
-        let img_selector = Selector::parse(".inmates img").map_err(|_| crate::Error::ParseError)?;
+        let img_selector = Selector::parse(".inmates img").map_err(|_| Error::ParseError)?;
         let img = if let Some(img_url) = html
             .select(&img_selector)
             .next()
@@ -73,7 +76,7 @@ impl InmateProfile {
             || profile.booking_date_iso8601.is_empty()
         {
             error!("Building a profile requires core attributes: first name, last name, dob, booking date. Current core attributes: {:#?}", profile.get_core_attributes());
-            return Err(crate::Error::ParseError);
+            return Err(Error::ParseError);
         }
 
         Ok(profile)
@@ -92,14 +95,13 @@ impl InmateProfile {
         }
     }
 
-    fn set_core_profile_data(&mut self, html: &Html) -> Result<(), crate::Error> {
+    fn set_core_profile_data(&mut self, html: &Html) -> Result<(), Error> {
         let num_dts_of_interest = 15;
         let mut found_dts = 0;
 
-        let profile_selector =
-            Selector::parse(".table-display").map_err(|_| crate::Error::ParseError)?;
-        let dt_selector = Selector::parse("dt").map_err(|_| crate::Error::ParseError)?;
-        let dd_selector = Selector::parse("dd").map_err(|_| crate::Error::ParseError)?;
+        let profile_selector = Selector::parse(".table-display").map_err(|_| Error::ParseError)?;
+        let dt_selector = Selector::parse("dt").map_err(|_| Error::ParseError)?;
+        let dd_selector = Selector::parse("dd").map_err(|_| Error::ParseError)?;
         for table in html.select(&profile_selector) {
             let mut dts = table.select(&dt_selector);
             let mut dds = table.select(&dd_selector);
@@ -373,13 +375,13 @@ pub struct BondInformation {
 }
 
 impl BondInformation {
-    pub fn build(html: &Html) -> Result<BondInformation, crate::Error> {
+    pub fn build(html: &Html) -> Result<BondInformation, Error> {
         let mut bonds = Vec::new();
         // | Date Set | Type ID	| Bond Amt | Status	| Posted By	| Date Posted |
         trace!("Building BondInformation from HTML: {:#?}", html.html());
-        let bond_tr_selector = Selector::parse(".inmates-bond-table tbody tr")
-            .map_err(|_| crate::Error::ParseError)?;
-        let td_selector = Selector::parse("td").map_err(|_| crate::Error::ParseError)?;
+        let bond_tr_selector =
+            Selector::parse(".inmates-bond-table tbody tr").map_err(|_| Error::ParseError)?;
+        let td_selector = Selector::parse("td").map_err(|_| Error::ParseError)?;
 
         for row in html.select(&bond_tr_selector) {
             let mut td = row.select(&td_selector);
@@ -477,13 +479,13 @@ pub struct ChargeInformation {
 }
 
 impl ChargeInformation {
-    pub fn build(html: &Html) -> Result<ChargeInformation, crate::Error> {
+    pub fn build(html: &Html) -> Result<ChargeInformation, Error> {
         trace!("Building ChargeInformation from HTML: {:#?}", html);
         let mut charges = Vec::new();
 
-        let row_selector = Selector::parse(".inmates-charges-table tbody tr")
-            .map_err(|_| crate::Error::ParseError)?;
-        let td_selector = Selector::parse("td").map_err(|_| crate::Error::ParseError)?;
+        let row_selector =
+            Selector::parse(".inmates-charges-table tbody tr").map_err(|_| Error::ParseError)?;
+        let td_selector = Selector::parse("td").map_err(|_| Error::ParseError)?;
 
         for charge_row in html.select(&row_selector) {
             let mut td = charge_row.select(&td_selector);
@@ -531,7 +533,7 @@ impl ChargeInformation {
 
         if charges.is_empty() {
             error!("No charges found in HTML: {:#?}", html.html());
-            return Err(crate::Error::ParseError);
+            return Err(Error::ParseError);
         }
 
         Ok(ChargeInformation { charges })
@@ -549,7 +551,7 @@ pub struct Record {
 impl Record {
     // We should probably update this code to return an option type
     // There is so many different ways to fail here, we can write our own error types, or just return an option
-    pub async fn build(client: &reqwest::Client, sys_id: &str) -> Result<Record, crate::Error> {
+    pub async fn build(client: &reqwest::Client, sys_id: &str) -> Result<Record, Error> {
         let request_url = format!(
             "https://www.scottcountyiowa.us/sheriff/inmates.php{}",
             sys_id
@@ -559,10 +561,10 @@ impl Record {
             .get(&request_url)
             .send()
             .await
-            .map_err(|_| crate::Error::NetworkError)?
+            .map_err(|_| Error::NetworkError)?
             .text()
             .await
-            .map_err(|_| crate::Error::NetworkError)?;
+            .map_err(|_| Error::NetworkError)?;
         let record_body_html = Html::parse_document(&record_body);
         trace!("Record request body: {:#?}", record_body_html);
 
@@ -577,7 +579,7 @@ impl Record {
     pub async fn gather_openai_embedding<C>(
         &mut self,
         openai_client: &async_openai::Client<C>,
-    ) -> Result<(), crate::Error>
+    ) -> Result<(), Error>
     where
         C: Config,
     {
@@ -589,37 +591,36 @@ impl Record {
                     .expect("Failed to generate story"),
             )
             .build()
-            .map_err(|_| {
-                crate::Error::InternalError(String::from("Failed to build OpenAI request!"))
-            })?;
+            .map_err(|_| Error::InternalError(String::from("Failed to build OpenAI request!")))?;
 
         let embed_resp = openai_client
             .embeddings()
             .create(request)
             .await
             .map_err(|_| {
-                crate::Error::InternalError(format!(
+                Error::InternalError(format!(
                     "Failed to get OpenAI embeddings for record: {:#?}",
                     self
                 ))
             })?;
 
         debug!("OpenAI embedding resp: {:#?}", embed_resp);
-        self.profile.embedding = match embed_resp.data.first() {
-            Some(embedding_handle) => Some(embedding_handle.embedding.clone()),
+        match embed_resp.data.first() {
+            Some(embedding_handle) => {
+                self.profile.embedding = Some(embedding_handle.embedding.clone());
+            }
             None => {
-                warn!(
-                    "No embeddings found in Open AI response: {:#?}. Still serializing",
+                return Err(Error::InternalError(format!(
+                    "No embeddings found in Open AI response: {:#?}.",
                     embed_resp
-                );
-                None
+                )))
             }
         };
 
         Ok(())
     }
 
-    pub fn generate_embedding_story(&self) -> Result<String, crate::Error> {
+    pub fn generate_embedding_story(&self) -> Result<String, Error> {
         let sex_description = match &self.profile.sex {
             Some(sex) => {
                 if sex.to_lowercase() == "male" {
