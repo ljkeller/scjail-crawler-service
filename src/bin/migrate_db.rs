@@ -39,7 +39,7 @@ async fn main() -> Result<(), Error> {
     };
 
     create_req.await?;
-    match serialize_records::<_, OpenAIConfig>(records, &pg_pool, &oai_client).await {
+    match serialize_records::<_, OpenAIConfig>(records, &pg_pool, &oai_client, &None).await {
         Err(e) => error!("Failed to serialize records: {:?}", e),
         _ => info!("Successfully serialized records!"),
     }

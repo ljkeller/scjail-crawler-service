@@ -1,4 +1,5 @@
 use log::{debug, error, info, trace, warn};
+use sha2::{Digest, Sha256};
 use sqlx::Row;
 
 use crate::{
@@ -213,6 +214,19 @@ impl InmateProfile {
             "{} {} dob=[{}] booking date=[{}]",
             self.first_name, self.last_name, self.dob, self.booking_date_iso8601
         )
+    }
+
+    pub fn get_hash_on_core_attributes(&self) -> String {
+        let inmate_img_hash_input = format!(
+            "{}{}{}{}",
+            self.first_name, self.last_name, self.dob, self.booking_date_iso8601
+        );
+
+        let mut hasher = Sha256::new();
+        hasher.update(inmate_img_hash_input);
+        let img_hash = hasher.finalize();
+        // :x format specifier for lowercase hex ints
+        format!("mugshots/{:x}", img_hash)
     }
 }
 

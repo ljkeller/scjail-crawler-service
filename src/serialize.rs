@@ -1,10 +1,12 @@
 use async_openai::config::{Config, OpenAIConfig};
 use async_openai::Client;
+use aws_sdk_s3::Client as S3Client;
 use log::{debug, info, trace, warn};
 use sqlx::postgres::PgPool;
 use sqlx::Row;
 
 use crate::inmate::{Bond, Charge, InmateProfile, Record};
+use crate::s3_utils;
 use crate::Error;
 
 pub async fn create_dbs(pool: &PgPool) -> Result<(), Error> {
@@ -153,6 +155,7 @@ pub async fn serialize_records<I, C>(
     records: I,
     pool: &PgPool,
     oai_client: &Option<Client<OpenAIConfig>>,
+    aws_s3_client: &Option<S3Client>,
 ) -> Result<(), Error>
 where
     I: IntoIterator<Item = crate::inmate::Record>,
@@ -178,7 +181,7 @@ where
             }
         }
 
-        match serialize_record(record, pool).await {
+        match serialize_record(record, pool, aws_s3_client).await {
             Ok(_) => {
                 inserted_count += 1;
             }
@@ -203,11 +206,15 @@ where
     Ok(())
 }
 
-pub async fn serialize_record(record: Record, pool: &PgPool) -> Result<i32, Error> {
+pub async fn serialize_record(
+    record: Record,
+    pool: &PgPool,
+    aws_s3_client: &Option<S3Client>,
+) -> Result<i32, Error> {
     trace!("Serializing record: {:#?}", record);
     let mut transaction = pool.begin().await?;
     let inmate_info = record.profile.get_core_attributes();
-    let inmate_id = serialize_profile(record.profile, &mut transaction).await?;
+    let inmate_id = serialize_profile(record.profile, &mut transaction, aws_s3_client).await?;
 
     for bond in record.bond.bonds {
         serialize_bond(bond, &inmate_id, &mut transaction).await?;
@@ -306,22 +313,31 @@ async fn serialize_alias(
 async fn serialize_profile(
     profile: InmateProfile,
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    aws_s3_client: &Option<S3Client>,
 ) -> Result<i32, Error> {
     //TODO: Can this have compile time checks with pgvectgor extension? It doesn't seem possible
     //currently.
+
+    // Pre-allocate the s3 url for the image
+    let s3_img_url = if profile.img_blob.is_some() {
+        profile.get_hash_on_core_attributes()
+    } else {
+        "".to_string()
+    };
+
     let row = sqlx::query(
         r#"
         INSERT INTO inmate
         (
             first_name, middle_name, last_name, affix, permanent_id,
             sex, dob, arresting_agency, booking_date, booking_number,
-            height, weight, race, eye_color, scil_sysid, embedding
+            height, weight, race, eye_color, img_url, scil_sysid, embedding
         )
         VALUES
         (
             $1, $2, $3, $4, $5,
             $6, $7::date, $8, $9::timestamptz, $10,
-            $11, $12, $13, $14, $15, $16
+            $11, $12, $13, $14, $15, $16, $17
         )
         RETURNING id
         "#,
@@ -340,6 +356,7 @@ async fn serialize_profile(
     .bind(profile.weight)
     .bind(profile.race)
     .bind(profile.eye_color)
+    .bind(s3_img_url)
     .bind(profile.scil_sys_id)
     .bind(profile.embedding)
     .fetch_one(&mut **transaction)
@@ -348,11 +365,33 @@ async fn serialize_profile(
     let inmate_id = row
         .try_get::<i32, _>("id")
         .expect("Expect inmate id to be present in profile serialization.");
-
     debug!(
         "Basic inmate data serialized to inmate table. Inmate ID: {}",
         inmate_id
     );
+
+    // TODO: Now that we're confident we have a unique inmate, write img to s3
+    /*
+    if profile.img_blob.is_some() && aws_s3_client.is_some() {
+        let img_url = s3_utils::upload_img_to_s3(
+            aws_s3_client.as_ref().unwrap(),
+            &s3_img_url,
+            profile.img_blob.unwrap(),
+        )
+        .await?;
+        sqlx::query!(
+            r#"
+            UPDATE inmate
+            SET img_url = $1
+            WHERE id = $2
+            "#,
+            img_url,
+            inmate_id
+        )
+        .execute(&mut **transaction)
+        .await?;
+    }
+    */
 
     // TODO: error handle failures on profile serialization that can be ignored? Letting
     // core profile data pass and ignoring the rest?

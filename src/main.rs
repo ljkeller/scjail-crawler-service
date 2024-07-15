@@ -1,16 +1,43 @@
-use async_openai::{types::CreateEmbeddingRequestArgs, Client as OaiClient};
-use log::{info, warn};
+use async_openai::config::OpenAIConfig;
+use async_openai::Client as OaiClient;
+use log::{info, trace, warn};
 use sqlx::postgres::PgPoolOptions;
 use std::env;
 
-use scjail_crawler_service::serialize::{create_dbs, inmate_count, serialize_record};
-use scjail_crawler_service::{fetch_records, Error};
+use scjail_crawler_service::serialize::{create_dbs, serialize_records};
+use scjail_crawler_service::{fetch_records, s3_utils, Error};
 
 #[tokio::main]
 async fn main() -> Result<(), crate::Error> {
     pretty_env_logger::init();
+    info!("Running scjail-crawler-service...");
+    info!("Reading (optional) positional arguments: url");
+    info!("Reading ENV Vars--\n -required: DATABASE_URL, \n -optional: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, OPENAI_API_KEY");
+
     let pg_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set!");
     let pool_res = PgPoolOptions::new().max_connections(5).connect(&pg_url);
+
+    let aws_s3_client = if let Ok(_) = env::var("AWS_ACCESS_KEY_ID") {
+        trace!("AWS_ACCESS_KEY_ID found, initializing default S3 client...");
+        let (_region, client) = s3_utils::get_default_s3_client().await;
+        Some(client)
+    } else {
+        warn!("No AWS_ACCESS_KEY_ID env var found skipping S3 client initialization... (Only environment variables are supported for this implementation)");
+        if let Ok(_) = env::var("AWS_SECRET_ACCESS_KEY") {
+            warn!("AWS_SECRET_ACCESS_KEY found, but no AWS_ACCESS_KEY_ID found, skipping S3 client initialization...");
+        } else {
+            warn!("No AWS_SECRET_ACCESS_KEY found, skipping S3 client initialization...");
+        }
+        None
+    };
+
+    let oai_client = if let Ok(_) = env::var("OPENAI_API_KEY") {
+        trace!("OpenAI API key found, initializing client...");
+        Some(OaiClient::new())
+    } else {
+        warn!("No OPENAI_API_KEY env var found, skipping embedding logic...");
+        None
+    };
 
     let url = if let Some(url) = std::env::args().nth(1) {
         url
@@ -23,69 +50,19 @@ async fn main() -> Result<(), crate::Error> {
         .build()
         .map_err(|_| Error::InternalError(String::from("Building reqwest client failed!")))?;
 
-    let oai_client = OaiClient::new();
+    info!(
+        "Established clients: aws: {:?}, openai: {:?}",
+        aws_s3_client, oai_client
+    );
 
-    let records = if let Ok(records) = fetch_records(&client, &url).await {
-        records
-    } else {
-        return Err(Error::InternalError(String::from(
-            "Failed to fetch records!",
-        )));
-    };
+    let records = fetch_records(&client, &url).await?;
 
     let pool = pool_res
         .await
         .map_err(|_| Error::InternalError(format!("Failed to connect to database: {}", pg_url)))?;
     create_dbs(&pool).await?;
 
-    let (mut inserted_count, mut failed_count) = (0, 0);
-
-    for mut record in records {
-        info!(
-            "Inserting record: {:#?}",
-            record.generate_embedding_story()?
-        );
-        let oai_request = CreateEmbeddingRequestArgs::default()
-            .model("text-embedding-3-small") //text-embedding-3-small defaults to 1536 dimensions
-            .input(record.generate_embedding_story()?)
-            .build()
-            .map_err(|_| Error::InternalError(String::from("Failed to build OpenAI request!")))?;
-
-        if env::var("GET_EMBEDDINGS").is_ok() {
-            let embed_resp = oai_client.embeddings().create(oai_request).await.unwrap();
-            info!("OpenAI embedding resp: {:#?}", embed_resp);
-
-            // Since we are only sending one input per request, we can assume the first embedding
-            // is the one we want
-            record.profile.embedding = match embed_resp.data.first() {
-                Some(embedding) => Some(embedding.embedding.clone()),
-                None => {
-                    warn!(
-                        "No embeddings found in response: {:#?}. Still serializing",
-                        embed_resp
-                    );
-                    None
-                }
-            };
-        }
-
-        match serialize_record(record, &pool).await {
-            Ok(_) => {
-                inserted_count += 1;
-            }
-            Err(e) => {
-                warn!("Failed to serialize record {:#?}", e);
-                failed_count += 1;
-            }
-        }
-    }
-
-    info!(
-        "Inserted {} records, failed to insert {} records. Total records: {}",
-        inserted_count,
-        failed_count,
-        inmate_count(&pool).await?
-    );
+    serialize_records::<_, OpenAIConfig>(records, &pool, &oai_client, &aws_s3_client).await?;
 
     Ok(())
 }
