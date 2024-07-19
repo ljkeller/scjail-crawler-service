@@ -14,6 +14,8 @@ use aws_sdk_s3::{config::Region, error::SdkError, primitives::ByteStream, Client
 use std::path::Path;
 use std::str;
 
+const DEFAULT_BUCKET_NAME: &str = "scjailio-dev";
+
 pub async fn get_default_s3_client() -> (Region, Client) {
     let region_provider = RegionProviderChain::first_try(Region::new("us-east-2"));
     let region = region_provider
@@ -126,6 +128,21 @@ pub async fn download_object(
         .get_object()
         .bucket(bucket_name)
         .key(key)
+        .send()
+        .await
+}
+
+pub async fn upload_img_to_default_bucket_s3(
+    client: &Client,
+    img_data: Vec<u8>,
+    img_key_s3: &str,
+) -> Result<PutObjectOutput, SdkError<PutObjectError>> {
+    let body = ByteStream::from(img_data);
+    client
+        .put_object()
+        .bucket(DEFAULT_BUCKET_NAME)
+        .key(img_key_s3)
+        .body(body)
         .send()
         .await
 }

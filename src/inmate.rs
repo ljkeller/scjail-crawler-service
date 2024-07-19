@@ -62,15 +62,31 @@ impl InmateProfile {
         if let Some(img) = img {
             match img.await {
                 Ok(img_resp) => {
+                    // sometimes resp status is not success, but still have request bytes & valid img url
+                    let resp_status = img_resp.status().clone();
                     if let Ok(img_blob) = img_resp.bytes().await {
-                        profile.img_blob = Some(img_blob.to_vec());
+                        profile.img_blob = if resp_status.is_success() {
+                            trace!(
+                                "Successfully fetched img for inmate: {:#?}",
+                                profile.get_full_name()
+                            );
+                            Some(img_blob.to_vec())
+                        } else {
+                            warn!(
+                                "Fetched img from URL for inmate: {:#?}. But had non-success status: {:#?}",
+                                profile.get_full_name(),
+                                resp_status
+                            );
+                            None
+                        }
                     }
                 }
                 Err(e) => warn!("Error fetching img: {:#?}, ignoring...", e),
             }
         }
 
-        // TODO! Get and set embedding
+        // TODO! Get and set embedding in build? Already do it in serialize (that way migrate-db
+        // has a nice way to get embeddings for all records)
         if profile.first_name.is_empty()
             || profile.last_name.is_empty()
             || profile.dob.is_empty()

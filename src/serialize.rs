@@ -192,7 +192,7 @@ where
         }
 
         if idx % 25 == 0 {
-            info!("Processed {} records", idx);
+            info!("Processed {} records", idx + 1);
         }
     }
 
@@ -319,12 +319,20 @@ async fn serialize_profile(
     //currently.
 
     // Pre-allocate the s3 url for the image
-    let s3_img_url = if profile.img_blob.is_some() {
+    let has_s3_upload_criteria: bool = profile.img_blob.is_some()
+        && !profile.img_blob.as_ref().unwrap().is_empty()
+        && aws_s3_client.is_some();
+
+    let s3_img_url = if has_s3_upload_criteria {
         profile.get_hash_on_core_attributes()
     } else {
         "".to_string()
     };
 
+    // NOTE: We insert the inmate here assuming S3 upload success for one primary reason:
+    //     1) This insert will fail if the inmate is already in the database. In this case, we
+    //        don't want to overwrite potentially existing s3 img data (as the s3 keys will be the
+    //        same). This could cause unintended errors, and would be a waste of resources.
     let row = sqlx::query(
         r#"
         INSERT INTO inmate
@@ -356,7 +364,7 @@ async fn serialize_profile(
     .bind(profile.weight)
     .bind(profile.race)
     .bind(profile.eye_color)
-    .bind(s3_img_url)
+    .bind(s3_img_url.clone())
     .bind(profile.scil_sys_id)
     .bind(profile.embedding)
     .fetch_one(&mut **transaction)
@@ -371,27 +379,34 @@ async fn serialize_profile(
     );
 
     // TODO: Now that we're confident we have a unique inmate, write img to s3
-    /*
-    if profile.img_blob.is_some() && aws_s3_client.is_some() {
-        let img_url = s3_utils::upload_img_to_s3(
+    if has_s3_upload_criteria {
+        match s3_utils::upload_img_to_default_bucket_s3(
             aws_s3_client.as_ref().unwrap(),
+            profile.img_blob.clone().unwrap(),
             &s3_img_url,
-            profile.img_blob.unwrap(),
         )
-        .await?;
-        sqlx::query!(
-            r#"
-            UPDATE inmate
-            SET img_url = $1
-            WHERE id = $2
-            "#,
-            img_url,
-            inmate_id
-        )
-        .execute(&mut **transaction)
-        .await?;
+        .await
+        {
+            Ok(put_obj) => {
+                trace!("Image uploaded to S3 successfully: {:#?}", put_obj);
+            }
+            Err(e) => {
+                warn!("Failed to upload image to S3: {:#?}", e);
+
+                // we assumed s3 upload success, update the img_url to be empty
+                sqlx::query!(
+                    r#"
+                        UPDATE inmate
+                        SET img_url = ''
+                        WHERE id = $1
+                    "#,
+                    inmate_id
+                )
+                .execute(&mut **transaction)
+                .await?;
+            }
+        }
     }
-    */
 
     // TODO: error handle failures on profile serialization that can be ignored? Letting
     // core profile data pass and ignoring the rest?
