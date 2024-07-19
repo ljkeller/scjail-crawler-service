@@ -1,6 +1,7 @@
 use async_openai::config::{Config, OpenAIConfig};
 use async_openai::Client;
 use aws_sdk_s3::Client as S3Client;
+use itertools::Itertools;
 use log::{debug, info, trace, warn};
 use sqlx::postgres::PgPool;
 use sqlx::Row;
@@ -164,10 +165,8 @@ where
     info!("Serializing records...");
     let (mut inserted_count, mut failed_count) = (0, 0);
     for (idx, mut record) in records.into_iter().enumerate() {
-        trace!(
-            "Inserting record: {:#?}",
-            record.generate_embedding_story()?
-        );
+        let story = record.generate_embedding_story()?;
+        trace!("Inserting record: {:#?}", story);
 
         if record.profile.embedding.is_none() && oai_client.is_some() {
             if let Err(e) = record
@@ -186,7 +185,7 @@ where
                 inserted_count += 1;
             }
             Err(e) => {
-                warn!("Failed to serialize record {:#?}", e);
+                warn!("Failed to serialize record: {:#?}. Error: {:#?}", story, e);
                 failed_count += 1;
             }
         }
@@ -410,12 +409,18 @@ async fn serialize_profile(
 
     // TODO: error handle failures on profile serialization that can be ignored? Letting
     // core profile data pass and ignoring the rest?
-    for alias in profile.aliases.into_iter().flatten() {
+    for alias in profile.aliases.into_iter().flatten().unique() {
         if alias.is_empty() {
             continue;
         }
 
-        let alias_id = serialize_alias(alias, transaction).await?;
+        let alias_id = match serialize_alias(alias, transaction).await {
+            Ok(id) => id,
+            Err(e) => {
+                warn!("Failed to serialize alias: {:#?}. Continuing serialize.", e);
+                continue;
+            }
+        };
 
         sqlx::query!(
             r#"
