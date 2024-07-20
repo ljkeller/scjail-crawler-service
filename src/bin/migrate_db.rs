@@ -6,6 +6,7 @@ use std::env;
 
 use scjail_crawler_service::{
     inmate::{Bond, BondInformation, Charge, ChargeInformation, DbInmateProfile, Record},
+    s3_utils,
     serialize::{create_dbs, serialize_records},
     Error,
 };
@@ -14,6 +15,7 @@ use scjail_crawler_service::{
 async fn main() -> Result<(), Error> {
     pretty_env_logger::init();
     info!("Migrating SQLite database to Postgres...");
+    info!("Reading ENV Vars--\n -required: SQLITE_DATABASE, POSTGRES_DATABASE, \n -optional: QUERY_LIMIT");
 
     let mut sqlite_conn = SqliteConnection::connect(
         &env::var("SQLITE_DATABASE").expect("env variable SQLITE_DATABASE must be set"),
@@ -28,7 +30,33 @@ async fn main() -> Result<(), Error> {
         .await?;
     let create_req = create_dbs(&pg_pool);
 
-    let records: Vec<Record> = get_records_from_sqlite(&mut sqlite_conn).await?;
+    let limit: Option<i64> = match env::var("QUERY_LIMIT") {
+        Ok(limit) => Some(
+            limit
+                .parse::<i64>()
+                .expect("QUERY_LIMIT must be a valid i64"),
+        ),
+        Err(_) => None,
+    };
+    info!("Query limit: {:?}", limit);
+    let records: Vec<Record> = get_records_from_sqlite_in_descending_ids(&mut sqlite_conn, &limit)
+        .await?
+        .rev()
+        .collect();
+
+    let aws_s3_client = if let Ok(_) = env::var("AWS_ACCESS_KEY_ID") {
+        trace!("AWS_ACCESS_KEY_ID found, initializing default S3 client...");
+        let (_region, client) = s3_utils::get_default_s3_client().await;
+        Some(client)
+    } else {
+        warn!("No AWS_ACCESS_KEY_ID env var found skipping S3 client initialization... (Only environment variables are supported for this implementation)");
+        if let Ok(_) = env::var("AWS_SECRET_ACCESS_KEY") {
+            warn!("AWS_SECRET_ACCESS_KEY found, but no AWS_ACCESS_KEY_ID found, skipping S3 client initialization...");
+        } else {
+            warn!("No AWS_SECRET_ACCESS_KEY found, skipping S3 client initialization...");
+        }
+        None
+    };
 
     let oai_client = if let Ok(_) = env::var("OPENAI_API_KEY") {
         trace!("OpenAI API key found, initializing client...");
@@ -38,8 +66,15 @@ async fn main() -> Result<(), Error> {
         None
     };
 
+    trace!(
+        "Established clients: aws? {:?}, openai? {:?}",
+        aws_s3_client.is_some(),
+        oai_client.is_some()
+    );
+
     create_req.await?;
-    match serialize_records::<_, OpenAIConfig>(records, &pg_pool, &oai_client, &None).await {
+    match serialize_records::<_, OpenAIConfig>(records, &pg_pool, &oai_client, &aws_s3_client).await
+    {
         Err(e) => error!("Failed to serialize records: {:?}", e),
         _ => info!("Successfully serialized records!"),
     }
@@ -47,11 +82,11 @@ async fn main() -> Result<(), Error> {
     Ok(())
 }
 
-async fn get_records_from_sqlite<R>(conn: &mut SqliteConnection) -> Result<R, Error>
-where
-    R: FromIterator<Record>,
-{
-    let profiles = get_inmate_profiles_sqlite(conn).await?;
+async fn get_records_from_sqlite_in_descending_ids(
+    conn: &mut SqliteConnection,
+    limit: &Option<i64>,
+) -> Result<impl Iterator<Item = Record> + DoubleEndedIterator + ExactSizeIterator, Error> {
+    let profiles = get_inmate_profiles_sqlite(conn, limit).await?;
     let mut records: Vec<Record> = Vec::new();
 
     for profile in profiles {
@@ -70,12 +105,13 @@ where
     });
     info!("Number of records: {}", records.len());
 
-    Ok(records.into_iter().collect())
+    Ok(records.into_iter())
 }
 
 /// Query to build a collection of InmateProfile structs.
 async fn get_inmate_profiles_sqlite(
     conn: &mut SqliteConnection,
+    limit: &Option<i64>,
 ) -> Result<Vec<DbInmateProfile>, Error> {
     let query = r#"
             SELECT inmate.*, group_concat(alias) as aliases, img.img 
@@ -86,8 +122,13 @@ async fn get_inmate_profiles_sqlite(
             GROUP BY inmate.id 
             ORDER BY inmate.id DESC
         "#;
+    let query = match limit {
+        Some(limit) => format!("{} LIMIT {}", query, limit),
+        None => query.to_string(),
+    };
     trace!("Get inmate profile Query: {}", query);
-    let profiles: Vec<DbInmateProfile> = sqlx::query_as(query).fetch_all(conn).await?;
+
+    let profiles: Vec<DbInmateProfile> = sqlx::query_as(&query).fetch_all(conn).await?;
 
     Ok(profiles)
 }
