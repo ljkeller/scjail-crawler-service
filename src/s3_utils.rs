@@ -11,6 +11,7 @@ use aws_sdk_s3::types::{
     BucketLocationConstraint, CreateBucketConfiguration, Delete, ObjectIdentifier,
 };
 use aws_sdk_s3::{config::Region, error::SdkError, primitives::ByteStream, Client};
+use std::env;
 use std::path::Path;
 use std::str;
 
@@ -141,6 +142,23 @@ pub async fn upload_img_to_default_bucket_s3(
     client
         .put_object()
         .bucket(DEFAULT_BUCKET_NAME)
+        .key(img_key_s3)
+        .body(body)
+        .send()
+        .await
+}
+
+pub async fn upload_img_to_env_bucket_s3(
+    client: &Client,
+    img_data: Vec<u8>,
+    img_key_s3: &str,
+) -> Result<PutObjectOutput, SdkError<PutObjectError>> {
+    let body = ByteStream::from(img_data);
+    let bucket = env::var("AWS_BUCKET_NAME").unwrap_or(DEFAULT_BUCKET_NAME.to_string());
+
+    client
+        .put_object()
+        .bucket(bucket)
         .key(img_key_s3)
         .body(body)
         .send()

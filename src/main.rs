@@ -15,6 +15,7 @@ async fn main() -> Result<(), crate::Error> {
     info!("Reading ENV Vars--\n -required: DATABASE_URL, \n -optional: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, OPENAI_API_KEY");
 
     let pg_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set!");
+    info!("DATABASE_URL: {}", pg_url);
     let pool_res = PgPoolOptions::new().max_connections(5).connect(&pg_url);
 
     let aws_s3_client = if let Ok(_) = env::var("AWS_ACCESS_KEY_ID") {
@@ -57,9 +58,12 @@ async fn main() -> Result<(), crate::Error> {
 
     let records = fetch_records(&client, &url).await?;
 
-    let pool = pool_res
-        .await
-        .map_err(|_| Error::InternalError(format!("Failed to connect to database: {}", pg_url)))?;
+    let pool = pool_res.await.map_err(|e| {
+        Error::InternalError(format!(
+            "Failed to connect to database: {}. e: {}",
+            pg_url, e
+        ))
+    })?;
     create_dbs(&pool).await?;
 
     serialize_records::<_, OpenAIConfig>(records, &pool, &oai_client, &aws_s3_client).await?;

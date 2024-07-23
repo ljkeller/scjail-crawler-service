@@ -379,7 +379,7 @@ async fn serialize_profile(
 
     // TODO: Now that we're confident we have a unique inmate, write img to s3
     if has_s3_upload_criteria {
-        match s3_utils::upload_img_to_default_bucket_s3(
+        match s3_utils::upload_img_to_env_bucket_s3(
             aws_s3_client.as_ref().unwrap(),
             profile.img_blob.clone().unwrap(),
             &s3_img_url,
