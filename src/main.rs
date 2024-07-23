@@ -23,21 +23,18 @@ async fn main() -> Result<(), crate::Error> {
         let (_region, client) = s3_utils::get_default_s3_client().await;
         Some(client)
     } else {
-        warn!("No AWS_ACCESS_KEY_ID env var found skipping S3 client initialization... (Only environment variables are supported for this implementation)");
+        warn!("No AWS_ACCESS_KEY_ID env var found for S3 client initialization... (Only environment variables are supported for this implementation)");
         if let Ok(_) = env::var("AWS_SECRET_ACCESS_KEY") {
-            warn!("AWS_SECRET_ACCESS_KEY found, but no AWS_ACCESS_KEY_ID found, skipping S3 client initialization...");
-        } else {
-            warn!("No AWS_SECRET_ACCESS_KEY found, skipping S3 client initialization...");
+            warn!("AWS_SECRET_ACCESS_KEY found, but no AWS_ACCESS_KEY_ID found for S3 client initialization...");
         }
-        None
+        panic!("Production requires AWS env vars for S3 client initialization! Check the initial logs for more information.");
     };
 
     let oai_client = if let Ok(_) = env::var("OPENAI_API_KEY") {
         trace!("OpenAI API key found, initializing client...");
         Some(OaiClient::new())
     } else {
-        warn!("No OPENAI_API_KEY env var found, skipping embedding logic...");
-        None
+        panic!("No OPENAI_API_KEY env var found- production requires this key!");
     };
 
     let url = if let Some(url) = std::env::args().nth(1) {
