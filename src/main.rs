@@ -1,11 +1,13 @@
 use async_openai::config::OpenAIConfig;
 use async_openai::Client as OaiClient;
 use log::{info, trace, warn};
+use scjail_crawler_service::fetch_records_filtered;
 use sqlx::postgres::PgPoolOptions;
+use std::collections::HashSet;
 use std::env;
 
 use scjail_crawler_service::serialize::{create_dbs, serialize_records};
-use scjail_crawler_service::{fetch_records, s3_utils, Error};
+use scjail_crawler_service::{fetch_records, s3_utils, utils::get_last_n_sys_ids, Error};
 
 #[tokio::main]
 async fn main() -> Result<(), crate::Error> {
@@ -53,8 +55,6 @@ async fn main() -> Result<(), crate::Error> {
         aws_s3_client, oai_client
     );
 
-    let records = fetch_records(&client, &url).await?;
-
     let pool = pool_res.await.map_err(|e| {
         Error::InternalError(format!(
             "Failed to connect to database: {}. e: {}",
@@ -62,6 +62,12 @@ async fn main() -> Result<(), crate::Error> {
         ))
     })?;
     create_dbs(&pool).await?;
+
+    let last_n_sys_ids = get_last_n_sys_ids(45, &pool)
+        .await?
+        .collect::<HashSet<String>>();
+    println!("Last 45 sys_ids: {:#?}", last_n_sys_ids);
+    let records = fetch_records_filtered(&client, &url, &last_n_sys_ids).await?;
 
     serialize_records::<_, OpenAIConfig>(records, &pool, &oai_client, &aws_s3_client).await?;
 

@@ -1,6 +1,8 @@
 use log::warn;
 use std::ops::{Div, Rem};
 
+use crate::Error;
+
 /// Returns the cent value of a given dollar string, assuming the string is in the format of "$x.yz", where x is a non-negative integer and yz are two base 10 digits.
 ///
 /// ## Warning
@@ -26,6 +28,24 @@ where
 {
     let dollars = cents / T::from(100);
     format!("${}.{:02}", dollars, cents % T::from(100))
+}
+
+pub async fn get_last_n_sys_ids(
+    n: i64,
+    pool: &sqlx::Pool<sqlx::Postgres>,
+) -> Result<impl Iterator<Item = String> + DoubleEndedIterator + ExactSizeIterator, Error> {
+    let sys_ids = sqlx::query!(
+        r#"SELECT scil_sysid FROM inmate ORDER BY id DESC LIMIT $1"#,
+        n
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| Error::PostgresError(format!("failed to get last {} sys_ids: {}", n, e)))?;
+
+    Ok(sys_ids.into_iter().map(|row| {
+        row.scil_sysid
+            .expect("Expect scil_sysid in get_last_n_sys_ids query")
+    }))
 }
 
 #[cfg(test)]
