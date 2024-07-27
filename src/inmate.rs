@@ -48,7 +48,7 @@ impl InmateProfile {
             .and_then(|img| img.attr("src"))
         {
             let full_img_url = format!("https:{}", img_url);
-            info!("Found img URL: {:#?}", full_img_url);
+            trace!("Found img URL: {:#?}", full_img_url);
             Some(client.get(full_img_url).send())
         } else {
             None

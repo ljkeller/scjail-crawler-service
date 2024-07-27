@@ -1,13 +1,15 @@
 use async_openai::config::OpenAIConfig;
 use async_openai::Client as OaiClient;
 use log::{info, trace, warn};
-use scjail_crawler_service::fetch_records_filtered;
 use sqlx::postgres::PgPoolOptions;
 use std::collections::HashSet;
 use std::env;
 
 use scjail_crawler_service::serialize::{create_dbs, serialize_records};
-use scjail_crawler_service::{fetch_records, s3_utils, utils::get_last_n_sys_ids, Error};
+use scjail_crawler_service::{
+    fetch_last_two_days_filtered, fetch_records_filtered, s3_utils, utils::get_last_n_sys_ids,
+    Error,
+};
 
 #[tokio::main]
 async fn main() -> Result<(), crate::Error> {
@@ -39,14 +41,12 @@ async fn main() -> Result<(), crate::Error> {
         panic!("No OPENAI_API_KEY env var found- production requires this key!");
     };
 
-    let url = if let Some(url) = std::env::args().nth(1) {
-        url
-    } else {
-        "https://www.scottcountyiowa.us/sheriff/inmates.php?comdate=today".into()
-    };
+    // Optional application arg: URL to crawl
+    let url = std::env::args().nth(1);
 
-    let client_builder = reqwest::ClientBuilder::new().timeout(std::time::Duration::from_secs(15));
-    let client = client_builder
+    let reqwest_client_builder =
+        reqwest::ClientBuilder::new().timeout(std::time::Duration::from_secs(15));
+    let reqwest_client = reqwest_client_builder
         .build()
         .map_err(|_| Error::InternalError(String::from("Building reqwest client failed!")))?;
 
@@ -67,7 +67,14 @@ async fn main() -> Result<(), crate::Error> {
         .await?
         .collect::<HashSet<String>>();
     println!("Last 45 sys_ids: {:#?}", last_n_sys_ids);
-    let records = fetch_records_filtered(&client, &url, &last_n_sys_ids).await?;
+
+    let records = if let Some(url) = url {
+        info!("Fetching records for env URL: {:?}...", url);
+        fetch_records_filtered(&reqwest_client, &url, &last_n_sys_ids).await?
+    } else {
+        info!("Fetching records for last two days...");
+        fetch_last_two_days_filtered(&reqwest_client, &last_n_sys_ids).await?
+    };
 
     serialize_records::<_, OpenAIConfig>(records, &pool, &oai_client, &aws_s3_client).await?;
 
