@@ -1,6 +1,7 @@
 use log::{debug, error, info, trace, warn};
 use sha2::{Digest, Sha256};
 use sqlx::Row;
+use std::env;
 
 use crate::{
     utils::{cents_to_dollars, dollars_to_cents},
@@ -40,7 +41,14 @@ impl InmateProfile {
         trace!("Building InmateProfile from HTML: {:#?}", html);
 
         // fire off img download request before parsing HTML
-        tokio::time::sleep(std::time::Duration::from_millis(75)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(
+            env::var("REQ_DELAY_MS")
+                .unwrap_or("10000".to_string())
+                .parse::<u64>()
+                .expect("REQ_DELAY_MS must be a valid u64"),
+        ))
+        .await;
+
         let img_selector = Selector::parse(".inmates img").map_err(|_| Error::ParseError)?;
         let img = if let Some(img_url) = html
             .select(&img_selector)

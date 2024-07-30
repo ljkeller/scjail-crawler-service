@@ -32,7 +32,13 @@ async fn fetch_inmate_sysids_old_to_new(
         .send()
         .await
         .map_err(|_| Error::NetworkError)?;
-    tokio::time::sleep(std::time::Duration::from_millis(75)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(
+        env::var("REQ_DELAY_MS")
+            .unwrap_or("10000".to_string())
+            .parse::<u64>()
+            .expect("REQ_DELAY_MS must be a valid u64"),
+    ))
+    .await;
 
     debug!("Response: {:?} {}", res.version(), res.status());
     let body = res.text().await.map_err(|_| Error::NetworkError)?;
@@ -88,8 +94,13 @@ pub async fn fetch_records(
             info!("'STOP_EARLY' detected- stopping early");
             return Ok(records);
         }
-        // TODO: use config value to set sleep duration
-        tokio::time::sleep(std::time::Duration::from_millis(75)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(
+            env::var("REQ_DELAY_MS")
+                .unwrap_or("10000".to_string())
+                .parse::<u64>()
+                .expect("REQ_DELAY_MS must be a valid u64"),
+        ))
+        .await;
     }
     Ok(records)
 }
@@ -136,8 +147,14 @@ pub async fn fetch_records_filtered(
             info!("'STOP_EARLY' detected- stopping early");
             return Ok(records);
         }
-        // TODO: use config value to set sleep duration
-        tokio::time::sleep(std::time::Duration::from_millis(75)).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(
+            env::var("REQ_DELAY_MS")
+                .unwrap_or("10000".to_string())
+                .parse::<u64>()
+                .expect("REQ_DELAY_MS must be a valid u64"),
+        ))
+        .await;
     }
     Ok(records)
 }
@@ -181,7 +198,14 @@ pub async fn get_relative_listings_urls_for_last_two_days(
         .send()
         .await
         .map_err(|_| Error::NetworkError)?;
-    tokio::time::sleep(std::time::Duration::from_millis(75)).await;
+
+    tokio::time::sleep(std::time::Duration::from_millis(
+        env::var("REQ_DELAY_MS")
+            .unwrap_or("10000".to_string())
+            .parse::<u64>()
+            .expect("REQ_DELAY_MS must be a valid u64"),
+    ))
+    .await;
 
     debug!("Response: {:?} {}", res.version(), res.status());
     let body = res.text().await.map_err(|_| Error::NetworkError)?;
