@@ -16,7 +16,7 @@ async fn main() -> Result<(), crate::Error> {
     pretty_env_logger::init();
     info!("Running scjail-crawler-service...");
     info!("Reading (optional) positional arguments: url");
-    info!("Reading ENV Vars--\n -required: DATABASE_URL, \n -optional: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, OPENAI_API_KEY");
+    info!("Reading ENV Vars--\n -required: DATABASE_URL, \n -optional: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, OPENAI_API_KEY, DEV_ENV, REQ_DELAY_MS");
 
     let pg_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set!");
     info!("DATABASE_URL: {}", pg_url);
@@ -29,16 +29,33 @@ async fn main() -> Result<(), crate::Error> {
     } else {
         warn!("No AWS_ACCESS_KEY_ID env var found for S3 client initialization... (Only environment variables are supported for this implementation)");
         if let Ok(_) = env::var("AWS_SECRET_ACCESS_KEY") {
-            warn!("AWS_SECRET_ACCESS_KEY found, but no AWS_ACCESS_KEY_ID found for S3 client initialization...");
+            warn!("AWS_SECRET_ACCESS_KEY found, but no AWS_ACCESS_KEY_ID found for S3 client initialization... Invalid configuration!");
+            panic!("Production requires AWS env vars for S3 client initialization! Check the initial logs for more information.");
         }
-        panic!("Production requires AWS env vars for S3 client initialization! Check the initial logs for more information.");
+        match env::var("DEV_ENV") {
+            Ok(_) => {
+                warn!("DEV_ENV found, continuing in dev mode...");
+                None
+            }
+            _ => {
+                panic!("Production requires AWS env vars for S3 client initialization! Did you mean to run in dev mode? If so, set DEV_ENV.");
+            }
+        }
     };
 
     let oai_client = if let Ok(_) = env::var("OPENAI_API_KEY") {
         trace!("OpenAI API key found, initializing client...");
         Some(OaiClient::new())
     } else {
-        panic!("No OPENAI_API_KEY env var found- production requires this key!");
+        match env::var("DEV_ENV") {
+            Ok(_) => {
+                warn!("No OPENAI_API_KEY env var found, but DEV_ENV found. Continuing in dev mode...");
+                None
+            }
+            _ => {
+                panic!("No OPENAI_API_KEY env var found- production requires this key! Did you mean to run in dev mode? If so, set DEV_ENV.");
+            }
+        }
     };
 
     // Optional application arg: URL to crawl
