@@ -19,9 +19,6 @@ Cargo.lock
 # MSVC Windows builds of rustc generate these, which store debugging information
 *.pdb
 
-# SQLX prepare dir to cache db state
-.sqlx/
-
 # Added by cargo
 
 /target

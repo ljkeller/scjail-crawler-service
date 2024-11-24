@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO img\n            (inmate_id, img)\n        VALUES\n            ($1, $2)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a54a693bfd04a153d5be50a67c99b4017c405fe852f9d65bc468441c826d3b36"
+}

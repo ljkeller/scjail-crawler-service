@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO inmate_alias\n            (inmate_id, alias_id)\n            VALUES\n            ($1, $2)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f8701aecd9569a068d65656c38895d3180665120376a8a9eeaec7408fc395e99"
+}

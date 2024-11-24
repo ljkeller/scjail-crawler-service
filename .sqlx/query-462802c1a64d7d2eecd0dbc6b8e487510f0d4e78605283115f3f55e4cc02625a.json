@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "CREATE TABLE IF NOT EXISTS inmate_alias (\n          inmate_id INTEGER NOT NULL,\n          alias_id INTEGER NOT NULL,\n          FOREIGN KEY (inmate_id) REFERENCES inmate(id),\n          FOREIGN KEY (alias_id) REFERENCES alias(id),\n          PRIMARY KEY (inmate_id, alias_id)\n        );",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "462802c1a64d7d2eecd0dbc6b8e487510f0d4e78605283115f3f55e4cc02625a"
+}

@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO alias\n            (alias)\n        VALUES\n            ($1)\n        ON CONFLICT (alias) DO UPDATE\n            SET alias = EXCLUDED.alias\n        RETURNING id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "cf26272ed8336d3fe91383c0558d7b7d2b34f3c57d1fa3d91c42225e3f30c449"
+}

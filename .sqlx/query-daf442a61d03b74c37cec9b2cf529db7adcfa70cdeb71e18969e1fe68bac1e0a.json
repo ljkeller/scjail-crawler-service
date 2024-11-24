@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO charge\n            (inmate_id, description, grade, offense_date)\n        VALUES\n            ($1, $2, $3, $4)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "daf442a61d03b74c37cec9b2cf529db7adcfa70cdeb71e18969e1fe68bac1e0a"
+}

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                        UPDATE inmate\n                        SET img_url = ''\n                        WHERE id = $1\n                    ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9c8b3a4ac4a69e2b5e68c73e0e2606062926edab7ea341cccb5d7995ee894eb4"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "CREATE TABLE IF NOT EXISTS alias (\n            id SERIAL PRIMARY KEY,\n            alias TEXT UNIQUE NOT NULL CHECK (alias <> '')\n        );",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "35df1a9d8b7d134d07afefbef575b425938f571989bc7aae9e3a871387c9de65"
+}
