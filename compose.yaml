@@ -13,10 +13,27 @@
 # Not for prod use!
 
 services:
+  scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile.scraper
+      target: final
+    environment:
+      # process arg for runtime checks, but not used for building as that is cached already
+      - DATABASE_URL=postgres://postgres:123@database:5432
+      # tells application to ignore missing keys (s3, openai, etc...)
+      - DEV_ENV=true
+      - RUST_LOG=info
+      - REQ_DELAY_MS=100
+    depends_on:
+      database:
+        condition: service_healthy
+        # if database restarts, restart the scraper
+        restart: true
   database:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.db
     restart: always
     user: postgres
     # if move to prod, pull from a secrets file
