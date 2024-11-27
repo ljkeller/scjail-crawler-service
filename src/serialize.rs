@@ -113,6 +113,7 @@ async fn create_alias(pool: &sqlx::Pool<sqlx::Postgres>) -> Result<(), Error> {
 pub async fn create_inmate(pool: &PgPool) -> Result<(), Error> {
     let statements = vec![
         r#"CREATE EXTENSION IF NOT EXISTS vector;"#,
+        r#"CREATE EXTENSION IF NOT EXISTS pg_trgm;"#,
         r#"CREATE TABLE IF NOT EXISTS inmate (
           id SERIAL PRIMARY KEY,
           first_name TEXT NOT NULL CHECK (first_name <> ''),
