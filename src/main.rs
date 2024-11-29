@@ -13,7 +13,7 @@ use scjail_crawler_service::{
 #[tokio::main]
 async fn main() -> Result<(), crate::Error> {
     pretty_env_logger::init();
-    info!("Running scjail-crawler-service...");
+    info!("Running {} v{}...", env!("CARGO_PKG_NAME"),env!("CARGO_PKG_VERSION"));
     info!("Reading (optional) positional arguments: url");
     info!("Reading ENV Vars--\n -required: DATABASE_URL, \n -optional: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, OPENAI_API_KEY, DEV_ENV, REQ_DELAY_MS");
 
@@ -68,7 +68,7 @@ async fn main() -> Result<(), crate::Error> {
 
     info!(
         "Established clients: aws: {:?}, openai: {:?}",
-        aws_s3_client, oai_client
+        aws_s3_client.is_some(), oai_client.is_some()
     );
 
     let pool = pool_res.await.map_err(|e| {
