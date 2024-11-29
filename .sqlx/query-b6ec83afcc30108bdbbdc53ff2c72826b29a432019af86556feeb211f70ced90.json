@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n           SELECT id, scil_sysid, img_url\n           FROM inmate\n           ORDER BY id DESC\n           LIMIT $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "scil_sysid",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "img_url",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "b6ec83afcc30108bdbbdc53ff2c72826b29a432019af86556feeb211f70ced90"
+}

@@ -5,7 +5,7 @@ pub mod serialize;
 pub mod utils;
 
 use log::{debug, error, info, trace, warn};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::env;
 
 // Now, users can just use crate::Error
@@ -106,13 +106,23 @@ pub async fn fetch_records(
 }
 
 //TODO: Update names to specify ordering, add docs
+
+/// Fetches the inmate records from the given URL, ignoring records present in the blacklist.
+/// Returns two vectors of records: the first vector contains new records, and the second vector
+/// contains records that are already present in the database, but need updated
+/// (in the form of (id, record)).
+///
+/// # Errors
+/// NetworkError: If there are network or parsing errors to fetch record candidates
 pub async fn fetch_records_filtered(
     client: &reqwest::Client,
     url: &str,
     blacklist: &HashSet<String>,
-) -> Result<Vec<Record>, crate::Error> {
+    updatelist: &HashMap<String, i32>
+) -> Result<(Vec<Record>, Vec<(i32, Record)>), crate::Error> {
     info!("Fetching records for URL: {url}...");
-    let mut records = Vec::new();
+    let mut new_records = Vec::new();
+    let mut update_records = Vec::new();
 
     let sys_ids = match fetch_inmate_sysids_old_to_new(client, url).await {
         Ok(sys_ids) => {
@@ -136,8 +146,11 @@ pub async fn fetch_records_filtered(
         let record = Record::build(client, sys_id).await;
         match record {
             Ok(record) => {
-                debug!("Built record: {:#?}", record);
-                records.push(record);
+                debug!("Successfully built record: {:#?}. Storing it for return.", record);
+                match updatelist.get(sys_id) {
+                    Some(id) => update_records.push((id.clone(), record)),
+                    None => new_records.push(record)
+                }
             }
             Err(e) => {
                 error!("Error building record: {:#?} for {sys_id}. Continuing", e);
@@ -145,7 +158,7 @@ pub async fn fetch_records_filtered(
         }
         if stop_early {
             info!("'STOP_EARLY' detected- stopping early");
-            return Ok(records);
+            return Ok((new_records, update_records));
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(
@@ -156,7 +169,7 @@ pub async fn fetch_records_filtered(
         ))
         .await;
     }
-    Ok(records)
+    Ok((new_records, update_records))
 }
 
 /// Fetches the last two days' records from the Scott County Inmate listing
@@ -167,20 +180,22 @@ pub async fn fetch_records_filtered(
 /// This function will return an error if there are network or parsing errors.
 pub async fn fetch_last_two_days_filtered(
     client: &reqwest::Client,
-    last_n_sys_ids: &HashSet<String>,
-) -> Result<Vec<Record>, crate::Error> {
+    blacklist: &HashSet<String>,
+    updatelist: &HashMap<String, i32>
+) -> Result<(Vec<Record>, Vec<(i32, Record)>), crate::Error> {
     let visit_urls: Vec<String> = get_relative_listings_urls_for_last_two_days(client).await?;
     debug!("Last two days urls: {:#?}", visit_urls);
-    let mut records: Vec<Record> = Vec::new();
+    let (mut new_records, mut update_records) = (Vec::new(), Vec::new());
 
     // Visit [yesterday_url, today_url]
     for relative_url in visit_urls {
         let day_url = format!("{SCOTT_COUNTY_INMATE_TRAVERSAL_ROOT}{relative_url}");
-        let records_for_day = fetch_records_filtered(client, &day_url, last_n_sys_ids).await?;
-        records.extend(records_for_day);
+        let records_bundle = fetch_records_filtered(client, &day_url, blacklist, updatelist).await?;
+        new_records.extend(records_bundle.0);
+        update_records.extend(records_bundle.1);
     }
 
-    Ok(records)
+    Ok((new_records, update_records))
 }
 
 /// Gets the last two days' relative URLs from the Scott County Inmate site.

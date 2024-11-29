@@ -2,12 +2,11 @@ use async_openai::config::OpenAIConfig;
 use async_openai::Client as OaiClient;
 use log::{info, trace, warn};
 use sqlx::postgres::PgPoolOptions;
-use std::collections::HashSet;
 use std::env;
 
 use scjail_crawler_service::serialize::{create_dbs, serialize_records};
 use scjail_crawler_service::{
-    fetch_last_two_days_filtered, fetch_records_filtered, s3_utils, utils::get_last_n_sys_ids,
+    fetch_last_two_days_filtered, fetch_records_filtered, s3_utils, utils::get_blacklist_and_updatelist, serialize::update_null_img_records,
     Error,
 };
 
@@ -80,20 +79,26 @@ async fn main() -> Result<(), crate::Error> {
     })?;
     create_dbs(&pool).await?;
 
-    let last_n_sys_ids = get_last_n_sys_ids(45, &pool)
-        .await?
-        .collect::<HashSet<String>>();
-    println!("Last 45 sys_ids: {:#?}", last_n_sys_ids);
+    let (blacklist, updatelist) = get_blacklist_and_updatelist(45, &pool).await?;
+    info!("Found these records to blacklist: {:#?}", blacklist.len());
+    info!("Found these records due for update: {:#?}", updatelist);
 
-    let records = if let Some(url) = url {
+    let (new_records, update_records) = if let Some(url) = url {
         info!("Fetching records for env URL: {:?}...", url);
-        fetch_records_filtered(&reqwest_client, &url, &last_n_sys_ids).await?
+        fetch_records_filtered(&reqwest_client, &url, &blacklist, &updatelist).await?
     } else {
         info!("Fetching records for last two days...");
-        fetch_last_two_days_filtered(&reqwest_client, &last_n_sys_ids).await?
+        fetch_last_two_days_filtered(&reqwest_client, &blacklist, &updatelist).await?
     };
 
-    serialize_records::<_, OpenAIConfig>(records, &pool, &oai_client, &aws_s3_client).await?;
+    match serialize_records::<_, OpenAIConfig>(new_records, &pool, &oai_client, &aws_s3_client).await {
+        Ok(_) => (),
+        Err(e) => warn!("Failed serialize_records call. Check logs to view successful inserts or failures: {:?}", e),
+    }
+    match update_null_img_records(update_records, &pool, &aws_s3_client).await {
+        Ok(_) => (),
+        Err(e) => warn!("Failed to update null image records: {:?}", e),
+    }
 
     Ok(())
 }

@@ -144,6 +144,12 @@ pub async fn create_inmate(pool: &PgPool) -> Result<(), Error> {
     run_sql_batch(pool, &statements).await
 }
 
+/// Returns true if the profile has the necessary criteria to upload to S3, false otherwise.
+fn has_s3_upload_criteria(profile: &InmateProfile, aws_s3_client: &Option<S3Client>) -> bool {
+    debug!("Checking S3 upload criteria... Profile has img?: {:#?}. Have s3 client?: {:#?}", profile.img_blob.is_some(), aws_s3_client.is_some());
+    profile.img_blob.is_some() && !profile.img_blob.as_ref().unwrap().is_empty() && aws_s3_client.is_some()
+}
+
 pub async fn inmate_count(pool: &PgPool) -> Result<i64, Error> {
     let res = sqlx::query!("SELECT COUNT(*) FROM inmate")
         .fetch_one(pool)
@@ -153,6 +159,11 @@ pub async fn inmate_count(pool: &PgPool) -> Result<i64, Error> {
         .expect("Expect count to be present on on inmate count query"))
 }
 
+/// Serializes a batch of records into the database.
+///
+/// # Errors
+/// Only errors if count query used in final log fails. Otherwise, failures to insert are logged
+/// and the function continues to the next record.
 pub async fn serialize_records<I, C>(
     records: I,
     pool: &PgPool,
@@ -166,8 +177,7 @@ where
     info!("Serializing records...");
     let (mut inserted_count, mut failed_count) = (0, 0);
     for (idx, mut record) in records.into_iter().enumerate() {
-        let story = record.generate_embedding_story()?;
-        trace!("Inserting record: {:#?}", story);
+        trace!("Serializing record: {:#?}", record);
 
         if record.profile.embedding.is_none() && oai_client.is_some() {
             if let Err(e) = record
@@ -186,7 +196,7 @@ where
                 inserted_count += 1;
             }
             Err(e) => {
-                warn!("Failed to serialize record: {:#?}. Error: {:#?}", story, e);
+                warn!("Failed to serialize record. Error: {:#?}", e);
                 failed_count += 1;
             }
         }
@@ -203,6 +213,84 @@ where
         inmate_count(pool).await?,
         oai_client.is_some()
     );
+    Ok(())
+}
+
+/// Updates null img records with the img blob from the latest parse.
+/// This function is intended to be used after a parse has been completed and the img blobs are
+/// available.
+///
+/// # Errors
+/// Returns an error if the S3 client is not found.
+pub async fn update_null_img_records<I>(records: I, pool: &PgPool, aws_s3_client: &Option<S3Client>)
+-> Result<(), Error>
+where I: IntoIterator<Item = (i32, crate::inmate::Record)>
+{
+    if aws_s3_client.is_none() {
+        return Err(Error::InternalError("No S3 client found. Cannot update null img records.".to_string()));
+    }
+
+    info!("Updating null img records...");
+    let (mut updated_count, mut failed_count) = (0, 0);
+    for (idx, record) in records.into_iter() {
+        trace!("Updating record: {:#?}", record);
+
+        match update_null_img_record(&idx, &record, pool, aws_s3_client).await {
+            Ok(_) => {
+                updated_count += 1;
+            }
+            Err(e) => {
+                warn!("Failed to update record: {:#?}. Error: {:#?}. Skipping null img update.", record, e);
+                failed_count += 1;
+            }
+        }
+    }
+    info!(
+        "Updated {} null img records, failed to update {} null img records.",
+        updated_count,
+        failed_count
+    );
+
+    Ok(())
+}
+
+pub async fn update_null_img_record(
+    inmate_id: &i32,
+    record: &Record,
+    pool: &PgPool,
+    aws_s3_client: &Option<S3Client>,
+) -> Result<(), Error> {
+
+    if record.profile.img_blob.is_none() {
+        warn!("No img blob found for record: {:#?}. Skipping update.", record);
+        return Err(Error::InternalError("Can't update null img record because latest parse still didn't have image.
+                                         This could have several different causes: slow or failing img uploads at Scott County,
+                                         parsing failures, or internal logic failures".to_string()));
+    }
+
+    let meets_upload_criteria = has_s3_upload_criteria(&record.profile, &aws_s3_client);
+    if !meets_upload_criteria {
+        return Err(Error::InternalError(format!("Record {:#?} does not meet S3 upload criteria.", record)));
+    }
+
+    let s3_img_url = record.profile.get_hash_on_core_attributes();
+    s3_utils::upload_img_to_env_bucket_s3(
+        aws_s3_client.as_ref().unwrap(),
+        record.profile.img_blob.clone().unwrap(),
+        &s3_img_url,
+    ).await?;
+
+    debug!("Image uploaded to S3 successfully: {:#?}", s3_img_url);
+    sqlx::query!(
+        r#"
+        UPDATE inmate
+        SET img_url = $1
+        WHERE id = $2
+        "#,
+        s3_img_url,
+        inmate_id
+    ).execute(pool).await?;
+    info!("Null img record updated: {:#?}. Inmate id {} should have img now", record, inmate_id);
     Ok(())
 }
 
@@ -319,10 +407,7 @@ async fn serialize_profile(
     //currently.
 
     // Pre-allocate the s3 url for the image
-    let has_s3_upload_criteria: bool = profile.img_blob.is_some()
-        && !profile.img_blob.as_ref().unwrap().is_empty()
-        && aws_s3_client.is_some();
-
+    let has_s3_upload_criteria = has_s3_upload_criteria(&profile, &aws_s3_client);
     let s3_img_url = if has_s3_upload_criteria {
         profile.get_hash_on_core_attributes()
     } else {

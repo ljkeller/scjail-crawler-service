@@ -1,4 +1,5 @@
 use log::warn;
+use std::collections::{HashMap, HashSet};
 use std::ops::{Div, Rem};
 
 use crate::Error;
@@ -30,22 +31,49 @@ where
     format!("${}.{:02}", dollars, cents % T::from(100))
 }
 
-pub async fn get_last_n_sys_ids(
+/// Returns a tuple containing (HashSet of inmate sys_ids that should be ignored, HashMap of inmate
+/// sys_ids that need their pictures updated)
+///
+/// # Justification
+/// The blacklist reduces unnecessary web requests by ignoring already processed records.
+/// The updatelist is necessary because sometimes our scraper will find records before their images 
+/// are uploaded. This function will help fix those broken records.
+pub async fn get_blacklist_and_updatelist(
     n: i64,
     pool: &sqlx::Pool<sqlx::Postgres>,
-) -> Result<impl Iterator<Item = String> + DoubleEndedIterator + ExactSizeIterator, Error> {
-    let sys_ids = sqlx::query!(
-        r#"SELECT scil_sysid FROM inmate ORDER BY id DESC LIMIT $1"#,
+) -> Result<(HashSet<String>, HashMap<String, i32>), Error> {
+    let mut blacklist = HashSet::new();
+    let mut updatelist = HashMap::new();
+
+    let recent_records = sqlx::query!(
+        r#"
+           SELECT id, scil_sysid, img_url
+           FROM inmate
+           ORDER BY id DESC
+           LIMIT $1
+        "#,
         n
     )
     .fetch_all(pool)
     .await
     .map_err(|e| Error::PostgresError(format!("failed to get last {} sys_ids: {}", n, e)))?;
 
-    Ok(sys_ids.into_iter().map(|row| {
-        row.scil_sysid
-            .expect("Expect scil_sysid in get_last_n_sys_ids query")
-    }))
+    for record in recent_records {
+        match record.scil_sysid {
+            Some(sys_id) => {
+                if record.img_url.is_none() {
+                    updatelist.insert(sys_id, record.id);
+                } else {
+                    blacklist.insert(sys_id);
+                }
+            },
+            None => {
+                warn!("Found a record with no sys_id: {:#?}", record);
+            }
+        }
+    }
+
+    return Ok((blacklist, updatelist));
 }
 
 #[cfg(test)]
