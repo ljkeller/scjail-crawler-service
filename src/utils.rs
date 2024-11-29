@@ -1,4 +1,4 @@
-use log::warn;
+use log::{debug, warn};
 use std::collections::{HashMap, HashSet};
 use std::ops::{Div, Rem};
 
@@ -58,10 +58,11 @@ pub async fn get_blacklist_and_updatelist(
     .await
     .map_err(|e| Error::PostgresError(format!("failed to get last {} sys_ids: {}", n, e)))?;
 
+    debug!("Found {:#?} records to check for image updates", recent_records);
     for record in recent_records {
         match record.scil_sysid {
             Some(sys_id) => {
-                if record.img_url.is_none() {
+                if record.img_url.is_none() || record.img_url.unwrap().is_empty() {
                     updatelist.insert(sys_id, record.id);
                 } else {
                     blacklist.insert(sys_id);

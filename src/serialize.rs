@@ -240,7 +240,7 @@ where I: IntoIterator<Item = (i32, crate::inmate::Record)>
                 updated_count += 1;
             }
             Err(e) => {
-                warn!("Failed to update record: {:#?}. Error: {:#?}. Skipping null img update.", record, e);
+                warn!("Failed to update record: {:?}. Error: {:?}. Skipping null img update.", record, e);
                 failed_count += 1;
             }
         }
@@ -262,15 +262,16 @@ pub async fn update_null_img_record(
 ) -> Result<(), Error> {
 
     if record.profile.img_blob.is_none() {
-        warn!("No img blob found for record: {:#?}. Skipping update.", record);
-        return Err(Error::InternalError("Can't update null img record because latest parse still didn't have image.
-                                         This could have several different causes: slow or failing img uploads at Scott County,
-                                         parsing failures, or internal logic failures".to_string()));
+        warn!("No img blob found for record. Skipping update.");
+        return Err(Error::InternalError(
+            "Can't update null img record because latest parse still didn't have image. \
+            This could have several different causes: slow or failing img uploads at Scott County, \
+            parsing failures, or internal logic failures".to_string()));
     }
 
     let meets_upload_criteria = has_s3_upload_criteria(&record.profile, &aws_s3_client);
     if !meets_upload_criteria {
-        return Err(Error::InternalError(format!("Record {:#?} does not meet S3 upload criteria.", record)));
+        return Err(Error::InternalError(format!("Record or env does not meet S3 upload criteria.")));
     }
 
     let s3_img_url = record.profile.get_hash_on_core_attributes();
@@ -290,7 +291,9 @@ pub async fn update_null_img_record(
         s3_img_url,
         inmate_id
     ).execute(pool).await?;
-    info!("Null img record updated: {:#?}. Inmate id {} should have img now", record, inmate_id);
+
+    info!("Null img record updated: {}. Inmate id {} should have s3 img now", record.url, inmate_id);
+    debug!("Null img record updated: {:#?}.", record);
     Ok(())
 }
 

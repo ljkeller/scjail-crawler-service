@@ -91,6 +91,7 @@ async fn main() -> Result<(), crate::Error> {
         fetch_last_two_days_filtered(&reqwest_client, &blacklist, &updatelist).await?
     };
 
+    info!("Serializing records...");
     match serialize_records::<_, OpenAIConfig>(new_records, &pool, &oai_client, &aws_s3_client).await {
         Ok(_) => (),
         Err(e) => warn!("Failed serialize_records call. Check logs to view successful inserts or failures: {:?}", e),
