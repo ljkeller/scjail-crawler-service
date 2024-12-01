@@ -421,6 +421,7 @@ async fn serialize_profile(
     //     1) This insert will fail if the inmate is already in the database. In this case, we
     //        don't want to overwrite potentially existing s3 img data (as the s3 keys will be the
     //        same). This could cause unintended errors, and would be a waste of resources.
+    // Note: Carefully manage timezones on insertion
     let row = sqlx::query(
         r#"
         INSERT INTO inmate
@@ -432,8 +433,9 @@ async fn serialize_profile(
         VALUES
         (
             $1, $2, $3, $4, $5,
-            $6, $7::date, $8, $9::timestamptz, $10,
-            $11, $12, $13, $14, $15, $16, $17
+            $6, $7::date, $8,
+            $9::TIMESTAMP WITHOUT TIME ZONE AT TIME ZONE 'America/Chicago',
+            $10, $11, $12, $13, $14, $15, $16, $17
         )
         RETURNING id
         "#,
